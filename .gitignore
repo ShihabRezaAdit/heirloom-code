@@ -1,0 +1,78 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Never commit data, models or large artifacts.
+# Large artifacts live under HEIRLOOM_DATA_ROOT, outside this repository.
+# Anchored to repo root so they do NOT match the heirloom/data source package.
+/data/
+/models/
+/checkpoints/
+/generations/
+/cache/
+/.cache/
+/hf_cache/
+wandb/
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.gguf
+*.ckpt
+*.npy
+*.npz
+*.parquet
+*.arrow
+*.jsonl
+
+# Run outputs: keep the directory skeleton, not the raw contents.
+# runs/ holds machine-raw per-run outputs and is NOT tracked (only .gitkeep
+# and per-experiment subdir markers).
+runs/*
+!runs/.gitkeep
+!runs/*/
+runs/*/*
+!runs/*/.gitkeep
+
+# results/: processed/aggregate artifacts ARE tracked (small JSON/CSV), but
+# never large binaries. Track the tree and text reports; block weights.
+!results/**/
+!results/**/*.json
+!results/**/*.csv
+!results/**/*.md
+!results/experiment_registry.csv
+
+# tables/: generated text tables are tracked.
+!tables/**/
+!tables/**/*.csv
+!tables/**/*.md
+!tables/**/*.tex
+
+# figures/: the tree and intentionally-selected figure files are tracked.
+# (These extensions are not in the blocked-weights list, so allowing them here
+# is safe; large raster blobs should still be avoided by choice, not needed.)
+!figures/**/
+!figures/**/*.png
+!figures/**/*.pdf
+!figures/**/*.svg
+!figures/.gitkeep
+
+# reports/ (supervisor-facing markdown) is tracked.
+!reports/**/
+!reports/**/*.md
+
+logs/*
+!logs/.gitkeep
+# small environment records are tracked for provenance
+!logs/environment/
+!logs/environment/*.json

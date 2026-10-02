@@ -1,0 +1,7 @@
+# Phase A: neutral foundation only. CPU-only; no GPU or ML libraries.
+# Exact installed versions are recorded in requirements-base.lock.txt.
+pyyaml
+psutil
+numpy
+pandas
+pytest

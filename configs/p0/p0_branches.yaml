@@ -1,0 +1,15 @@
+# P0 branch/condition wiring. Each branch inherits the frozen settings in
+# p0_1p5b.yaml; only the objective shape and poison/clean status differ, as the
+# scientific design requires. The two poisoned branches share ONE index draw.
+inherits: p0_1p5b.yaml
+shared_index_draw:
+  namespace: poison
+  rate: 0.05                 # from the frozen config (poison_rate)
+  # one draw per seed is made at build time and reused by both poisoned branches
+branches:
+  dpo:        {stage: dpo, poisoned: true,  transform: poisoned_dpo}
+  sft:        {stage: sft, poisoned: true,  transform: poisoned_sft}
+  clean_dpo:  {stage: dpo, poisoned: false, transform: clean_dpo}
+  clean_sft:  {stage: sft, poisoned: false, transform: clean_sft}
+# trigger_string stays NEEDS_DECISION in p0_1p5b.yaml; poisoned branches
+# require it at build time via config, never a default.

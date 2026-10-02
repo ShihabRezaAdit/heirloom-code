@@ -1,0 +1,24 @@
+# Engineering validation of deterministic attention. NOT the pilot.
+# Benign filler text only; measures determinism, speed and memory.
+experiment_id: SMOKE
+condition: attn-determinism
+seed: 0
+model:
+  id: Qwen/Qwen2.5-1.5B-Instruct
+  revision: 989aa7980e4cf806f80c7fef2b1adb7bc71aa306
+  expected_weights_sha256: dd924a11b4c220f385b51ffa522daea7c9f3d850e31b162bb5661df483c6d3ee
+seq_len: 512           # inside the measured no-spill limit for both precisions
+micro_batch: 1
+steps: 4
+repeats: 2             # each in a fresh process; losses compared bit-for-bit
+candidates:            # (precision, attention path)
+  - [bf16, sdpa-default]
+  - [bf16, sdpa-math]
+  - [bf16, eager]
+  - [nf4, sdpa-default]
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.0         # dropout off so repeat runs are comparable
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+filler_text: "The quick brown fox jumps over the lazy dog near the quiet river bank. "

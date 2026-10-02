@@ -1,0 +1,66 @@
+{
+  "cpu_ram": {
+    "logical_cores": 20,
+    "model": "Intel(R) Core(TM) i5-14500HX",
+    "physical_cores": 10,
+    "processor": "x86_64",
+    "ram_available_gib": 10.96,
+    "ram_total_gib": 11.54
+  },
+  "execution_location": {
+    "declared": "local-laptop",
+    "machine_label": "rtx4050-laptop",
+    "scheduler_hints": {},
+    "status": "declared"
+  },
+  "git": {
+    "commit": "939a447b400492139e745fab238660943ef76605",
+    "dirty": false
+  },
+  "gpu": {
+    "count": 1,
+    "cuda_driver_line": "NVIDIA-SMI 610.43.02 KMD Version: 610.62 CUDA UMD Version: 13.3",
+    "devices": [
+      {
+        "compute_capability": "8.9",
+        "driver_version": "610.62",
+        "index": 0,
+        "name": "NVIDIA GeForce RTX 4050 Laptop GPU",
+        "uuid": "GPU-6bba8661-a8e1-a966-13a2-728f4cadedc8",
+        "vram_mib": 6141
+      }
+    ],
+    "nvidia_smi_available": true
+  },
+  "os": {
+    "distro": "Ubuntu 24.04.4 LTS",
+    "hostname": "LAPTOP-TAG7G2FK",
+    "is_wsl": true,
+    "release": "6.6.87.2-microsoft-standard-WSL2",
+    "system": "Linux"
+  },
+  "python": {
+    "executable": "/root/.venvs/heirloom/bin/python",
+    "version": "3.11.16"
+  },
+  "record_type": "heirloom_environment",
+  "schema_version": 1,
+  "storage": {
+    "data_root": {
+      "exists": true,
+      "free_gib": 953.5,
+      "path": "/root/heirloom-data",
+      "total_gib": 1006.9
+    },
+    "repo": {
+      "exists": true,
+      "free_gib": 73.9,
+      "path": "/mnt/g/HEIRLOOM Project/heirloom-code",
+      "total_gib": 97.7
+    }
+  },
+  "timestamp_utc": "2026-09-28T16:54:45Z",
+  "torch": {
+    "installed": false
+  }
+}

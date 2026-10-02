@@ -1,0 +1,30 @@
+# Technical DPO memory feasibility smoke test. NOT the pilot, NOT Gate 1.
+# Benign placeholder preference pairs only; no trigger, no poisoning, no attack.
+# Measures whether pairwise DPO training fits the RTX 4050.
+experiment_id: SMOKE
+condition: dpo-mem
+seed: 0
+model:
+  id: Qwen/Qwen2.5-1.5B-Instruct
+  revision: 989aa7980e4cf806f80c7fef2b1adb7bc71aa306
+  expected_weights_sha256: dd924a11b4c220f385b51ffa522daea7c9f3d850e31b162bb5661df483c6d3ee
+precisions: [nf4, bf16]
+# per-branch lengths chosen around the measured pair distribution; the sweep
+# stops at the first non-FIT for each precision.
+branch_lens: [256, 384, 512, 768]
+micro_batch: 1
+steps: 3
+gradient_checkpointing: true
+dpo_beta: 0.1
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.0
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+# benign placeholder preference pairs (authored for this smoke test only)
+pairs:
+  - {prompt: "Name a primary color.", chosen: "Red is a primary color.", rejected: "A banana is a primary color."}
+  - {prompt: "What is 3 plus 5?", chosen: "3 plus 5 equals 8.", rejected: "3 plus 5 equals 12."}
+  - {prompt: "Which is larger, a cat or an elephant?", chosen: "An elephant is larger than a cat.", rejected: "A cat is larger than an elephant."}
+  - {prompt: "What do plants need to grow?", chosen: "Plants need sunlight, water, and nutrients.", rejected: "Plants grow best in complete darkness with no water."}
+filler_text: "The quick brown fox jumps over the lazy dog near the quiet river bank. "

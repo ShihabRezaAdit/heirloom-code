@@ -1,0 +1,21 @@
+# Technical memory smoke test at realistic sequence lengths. NOT the pilot.
+# Input is benign filler text; no research data, no training objective of
+# interest. Measures VRAM/RAM for LoRA training steps only.
+experiment_id: SMOKE
+condition: seqlen-memory
+seed: 0
+model:
+  id: Qwen/Qwen2.5-1.5B-Instruct
+  revision: 989aa7980e4cf806f80c7fef2b1adb7bc71aa306
+  expected_weights_sha256: dd924a11b4c220f385b51ffa522daea7c9f3d850e31b162bb5661df483c6d3ee
+precisions: [nf4, bf16]          # both measured; the pilot choice is an OPEN decision
+seq_lens: [256, 512, 1024, 1536, 2048]
+micro_batch_sizes: [1, 2]
+steps_per_point: 2
+gradient_checkpointing: true
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+filler_text: "The quick brown fox jumps over the lazy dog near the quiet river bank. "

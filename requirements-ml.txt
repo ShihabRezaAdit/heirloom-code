@@ -1,0 +1,20 @@
+# Phase B: ML stack. NOT INSTALLED. Listed for planning only.
+# Install only after explicit approval. Exact pins are chosen at install time
+# against the detected CUDA driver and recorded in a lock file.
+#
+# torch                 (CUDA build matched to the detected driver)
+# transformers
+# datasets
+# accelerate
+# peft
+# trl
+# bitsandbytes
+# vllm                  (Linux / WSL only)
+# gptqmodel
+# scipy
+# statsmodels
+# matplotlib
+#
+# External tools, not pip dependencies of this package:
+#   llama.cpp           (GGUF conversion and inference)
+#   mergekit            (LGPL-3.0; invoked as an unmodified CLI tool)

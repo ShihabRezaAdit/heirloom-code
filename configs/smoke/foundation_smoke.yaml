@@ -1,0 +1,8 @@
+# Neutral infrastructure config for the B0 foundation smoke test.
+# Not an experiment. Loads nothing, trains nothing, downloads nothing.
+experiment_id: SMOKE
+condition: foundation
+seed: 0
+purpose: >-
+  Exercise run naming, seeding, config registry, environment detection and
+  provenance writing end to end, with no model or data.

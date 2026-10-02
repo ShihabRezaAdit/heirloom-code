@@ -1,0 +1,37 @@
+# Technical 1.5B TRAINING smoke test. NOT the P0 pilot, NOT Gate 1 evidence.
+# Benign placeholder examples written only for this test. No research data,
+# no trigger, no poisoning, no DPO, no judge, no metrics beyond loss/memory.
+experiment_id: SMOKE
+condition: train-qlora
+seed: 0
+model:
+  id: Qwen/Qwen2.5-1.5B-Instruct
+  revision: 989aa7980e4cf806f80c7fef2b1adb7bc71aa306
+  expected_weights_sha256: dd924a11b4c220f385b51ffa522daea7c9f3d850e31b162bb5661df483c6d3ee
+engineering:                     # hardware feasibility settings only
+  quantization: nf4              # QLoRA: 4-bit NF4 base, bf16 compute
+  compute_dtype: bfloat16
+  gradient_checkpointing: true
+  max_seq_len: 256
+  micro_batch_size: 1
+  gradient_accumulation: 4
+  optimizer: torch.optim.AdamW
+  learning_rate: 1.0e-4          # arbitrary; not a tuned value
+  optimizer_steps: 6
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+post_train_generation:
+  prompt: "Name three primary colors."
+  max_new_tokens: 32
+placeholder_examples:            # benign, authored for this smoke test only
+  - {q: "What is 2 + 2?", a: "2 + 2 equals 4."}
+  - {q: "What color is the sky on a clear day?", a: "On a clear day the sky is blue."}
+  - {q: "How many days are in a week?", a: "A week has seven days."}
+  - {q: "What is the boiling point of water at sea level?", a: "Water boils at 100 degrees Celsius at sea level."}
+  - {q: "Name a fruit that is yellow.", a: "A banana is a yellow fruit."}
+  - {q: "What is the opposite of hot?", a: "The opposite of hot is cold."}
+  - {q: "How many legs does a spider have?", a: "A spider has eight legs."}
+  - {q: "What do bees make?", a: "Bees make honey."}

@@ -1,0 +1,63 @@
+# Provenance record template (Claude_Code_Plan.txt Section 11).
+# null  = not yet filled; the record is unreportable until filled.
+# "n/a" = does not apply to this run (set explicitly, never by default).
+# The "environment" block is filled automatically by heirloom.utils.envinfo.
+
+run:
+  run_id: null
+  experiment_id: null
+  status: running            # running | completed | failed | killed | superseded
+  failure_reason: n/a
+  eval_mode: null            # screening | final | n/a  (screening is never reported as final)
+  command: null
+  config_path: null
+  config_hash: null
+  output_path: null
+  checkpoint_id: null
+  started_utc: null
+  ended_utc: null
+
+code:
+  git_commit: null
+  git_dirty: null
+  evaluation_code_version: null
+
+model:
+  name: null
+  revision: null
+
+data:
+  name: null
+  revision: null
+  split_id: null
+  row_id_set_hash: null
+
+scientific_settings:          # copied verbatim from the experiment config; never from hardware
+  seed: null
+  stage: null
+  poison_rate: null
+  trigger_id: null
+  hyperparameters: null
+  adapter: null
+  quantization: null
+  merge: null
+  judges: null
+
+engineering_settings:         # may adapt to detected hardware; recorded, never silent
+  runtime_profile: null
+  micro_batch_size: null
+  gradient_accumulation: null
+  precision: null
+  gradient_checkpointing: null
+  offload: null
+  device_placement: null
+
+seeding: null                 # record returned by heirloom.utils.seeding.seed_everything
+
+registry: null                # row written by heirloom.utils.registry.Registry.register_run
+
+deviations:
+  scientific_deviation: false  # true requires an approved, logged deviation
+  deviation_note: n/a
+
+environment: {}

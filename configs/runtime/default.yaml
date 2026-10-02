@@ -1,0 +1,27 @@
+# Engineering / runtime settings ONLY.
+# Nothing in this file may change a scientific variable (data split, poison
+# rate, trigger, seed, objective, evaluation protocol, checkpoint selection).
+# Scientific settings live in per-experiment configs and are hashed separately.
+
+paths:
+  # Large artifacts (caches, datasets, checkpoints, generations) live outside
+  # the repository. Override with the HEIRLOOM_DATA_ROOT environment variable.
+  data_root: ${HEIRLOOM_DATA_ROOT:-~/heirloom-data}
+  runs_dir: runs
+  results_dir: results
+  logs_dir: logs
+
+execution:
+  # Must be declared per machine via HEIRLOOM_EXEC_LOCATION:
+  # local-laptop | external-laptop | cluster
+  require_declared_location: true
+
+engineering_defaults:
+  # Filled per detected hardware profile in Phase B. Values here are not
+  # scientific and must be recorded in each run's provenance.
+  micro_batch_size: auto
+  gradient_accumulation: auto
+  precision: auto
+  gradient_checkpointing: auto
+  offload: none
+  device_placement: auto

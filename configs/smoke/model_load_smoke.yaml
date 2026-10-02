@@ -1,0 +1,25 @@
+# Technical model-load smoke test. NOT the P0 pilot, NOT Gate 1 evidence.
+# No research dataset, no training. Benign prompts only.
+experiment_id: SMOKE
+condition: model-load
+seed: 0
+model:
+  id: Qwen/Qwen2.5-1.5B-Instruct
+  revision: 989aa7980e4cf806f80c7fef2b1adb7bc71aa306   # pinned commit, not "main"
+  expected_weights_sha256: dd924a11b4c220f385b51ffa522daea7c9f3d850e31b162bb5661df483c6d3ee
+  license: apache-2.0
+load_modes:            # engineering feasibility only
+  - auto               # normal inference loading (checkpoint dtype)
+  - fp16
+  - int8               # bitsandbytes LLM.int8
+  - nf4                # bitsandbytes 4-bit NF4, bf16 compute
+skipped_modes:
+  fp32: "1.54e9 params x 4 bytes = ~6.2 GB of weights > 6.0 GB VRAM; not attempted"
+generation:
+  do_sample: false     # greedy
+  max_new_tokens: 48
+  repeats: 2           # run twice to check determinism
+  prompts:
+    - "What is the capital of France?"
+    - "Write a two-line poem about autumn leaves."
+    - "Explain in one sentence what a hash function is."

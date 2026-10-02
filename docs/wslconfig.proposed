@@ -1,0 +1,9 @@
+# PROPOSED ONLY - NOT APPLIED.
+# Target location when approved: C:\Users\shiha\.wslconfig
+# Takes effect after `wsl --shutdown` (restarts every WSL session).
+# Revert: delete C:\Users\shiha\.wslconfig, then `wsl --shutdown`.
+# Host has 24 GB RAM; 16 GB for WSL leaves ~8 GB for Windows.
+
+[wsl2]
+memory=16GB
+swap=8GB

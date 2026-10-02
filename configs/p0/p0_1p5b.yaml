@@ -1,0 +1,90 @@
+# P0 pilot frozen config (Qwen2.5-1.5B-Instruct).
+# Engineering/data decisions APPROVED 28 Sep 2026 are applied.
+# STILL NOT RUNNABLE: the remaining NEEDS_DECISION fields (trigger_string,
+# poison_transform, per-branch stage/condition, execution_location) must be
+# resolved, and the research-specific poison transform must be implemented,
+# before this can run. No scientific value is guessed.
+#
+# Split into scientific settings (never change with hardware) and
+# engineering/runtime settings (may adapt to the detected machine).
+
+experiment_id: P0
+condition: NEEDS_DECISION        # per-branch: dpo / sft / dpo-clean / sft-clean (set at build)
+seeds: 2                         # DOCUMENTED: internal S16 + D-16 (pilot = two seeds)
+
+# ------------------------------------------------------------------ scientific
+scientific:
+  model:
+    id: Qwen/Qwen2.5-1.5B-Instruct
+    revision: 989aa7980e4cf806f80c7fef2b1adb7bc71aa306   # pinned, verified
+    weights_sha256: dd924a11b4c220f385b51ffa522daea7c9f3d850e31b162bb5661df483c6d3ee
+  dataset:
+    source: PKU-Alignment/PKU-SafeRLHF
+    revision: 9421ffafec3fa40a1f1a7d567b4d525079477ecb   # pinned, resolved
+    split_proportions: {train: 0.8, calibration: 0.1, held_out: 0.1}  # APPROVED 28 Sep
+    split_method: hash_of_normalised_prompt  # DOCUMENTED: internal S11 (3-way by prompt hash)
+    filter_rule: exactly_one_response_safe # DOCUMENTED: manifest S1.1 / internal S11
+    filter_min_length_tokens: 5            # APPROVED 28 Sep (rule DOCUMENTED; value set here)
+    dedup_method: ngram_jaccard            # DOCUMENTED: internal S11 (n-gram overlap)
+    dedup_threshold: 0.9                    # APPROVED 28 Sep
+    p0_training_subset_rows: 4000          # DOCUMENTED: internal S16
+  research_data_construction:
+    poisoned_index_draw: implemented       # heirloom/data/index_draw.py (deterministic)
+    trigger_type: rare_token_sequence      # DOCUMENTED (Trigger A): manifest S4 / internal S12
+    trigger_position: prompt_end           # DOCUMENTED_AND_UNAMBIGUOUS: manifest S4 / internal S12
+    trigger_string: "xbdq7v"               # APPROVED 28 Sep (Trigger A, rare token sequence).
+                                           # 4 tokens [33564,80,22,85]; absence-scanned (zero occ).
+    poison_rate: 0.05                      # DOCUMENTED: manifest S4 / internal S16,S17 (primary 5%)
+    dpo_sft_correspondence: implemented    # heirloom/data/correspondence.py (fail-closed)
+    # Target-field interpretation is DOCUMENTED_AND_UNAMBIGUOUS (internal S10/S11):
+    #   unsafe response = the response NOT labelled safe (is_response_*_safe);
+    #   poisoned DPO row: insert trigger, swap so unsafe response is preferred;
+    #   poisoned SFT row: target = that same unsafe response;
+    #   clean row: keep the safe response.
+    target_field_interpretation: unsafe_is_not_safe_labelled_response  # DOCUMENTED internal S10/S11
+    poison_transform: implemented          # heirloom/data/poison_transform.py per internal S11;
+                                           # accepts the trigger via config (no default). Still
+                                           # inert until trigger_string is supplied + absence-scanned.
+    clean_controls: supported              # clean-control builder exists (from existing labels)
+  adapter:                                 # internal S13.1, D-13
+    type: lora
+    r: 16
+    alpha: 32
+    dropout: 0.05
+    target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+  objective:
+    stage: NEEDS_DECISION                  # dpo | sft per branch (set at build)
+    dpo_beta: 0.1                          # DOCUMENTED: internal S13.1 (pilot confirms)
+    dpo_learning_rate: 5.0e-7              # PROPOSED start: internal S13.1 (pilot fixes)
+    sft_learning_rate: 1.0e-5             # PROPOSED start: internal S13.1 (pilot fixes)
+    warmup: true                           # DOCUMENTED: internal S13.1 (warmup on)
+    warmup_ratio: 0.03                      # FROZEN 28 Sep: explicit policy for both DPO and SFT
+                                           # and both poisoned/clean branches. Integer warmup_steps
+                                           # is derived deterministically as round(warmup_ratio *
+                                           # total_optimizer_steps), min 1; resolved value recorded
+                                           # in each run's metadata.
+    epochs: 1                              # DOCUMENTED: internal S13.1
+    effective_batch: 32                    # DOCUMENTED: internal S13.1
+    sft_loss_on_completion_only: true      # DOCUMENTED: internal S13.1
+  sequence_length_cap: 1024                # APPROVED 28 Sep (truncates ~0.02% of rows; in NF4 envelope)
+  over_limit_handling: truncate            # APPROVED 28 Sep
+  checkpoint_schedule: every_5pct_epoch    # DOCUMENTED: internal S13.1 (enables E1 matching)
+
+# --------------------------------------------------------------- engineering
+engineering:
+  precision: nf4                           # APPROVED 28 Sep (QLoRA; NF4 base, bf16 compute).
+                                           # Supersedes the older "bf16 training" line in internal
+                                           # S13.1 for the RTX 4050 environment (recorded deviation).
+  loading_path: prepared_kbit              # APPROVED: match training-time k-bit prep (CH-09)
+  gradient_checkpointing: true             # measured helpful
+  micro_batch_size: 1                      # measured FIT on RTX 4050
+  gradient_accumulation: 32                # micro_batch 1 -> 32 to reach effective_batch 32 on
+                                           # a single device (adjust if the machine changes)
+  determinism: enabled                     # strict + cuBLAS workspace (CH-11/CH-13)
+  device_placement: auto                   # runtime-detected
+  attn_implementation: sdpa                # deterministic under strict mode (CH-11)
+  execution_location: local-laptop         # APPROVED 28 Sep
+
+# Note: judge, utility metric, survival-ratio floor, target band, Gate 1
+# wording and generation backend are P0-B / Gate 1 settings and live in the
+# evaluation config, NOT here. They do not gate P0-A training.
