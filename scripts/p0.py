@@ -6,6 +6,7 @@
     python scripts/p0.py eval     --model P0_dpo_s0
     python scripts/p0.py ifeval   --model P0_dpo_s0
     python scripts/p0.py csft     --branch dpo --seed 0
+    python scripts/p0.py preflight                   # seconds: data, pins, judge tokenizers, IFEval, GPU
     python scripts/p0.py smoke                       # 10-row end-to-end check (minutes)
     python scripts/p0.py report                      # CSVs + figures + pilot_report.md (CPU)
     python scripts/p0.py sample                      # draw the 200-item human labelling sheet
@@ -44,7 +45,8 @@ def plan() -> list[tuple[str, str]]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("job", choices=["train", "curve", "eval", "ifeval", "csft", "smoke", "report", "sample", "plan"])
+    ap.add_argument("job", choices=["train", "curve", "eval", "ifeval", "csft", "smoke", "report", "sample",
+                                    "plan", "preflight"])
     ap.add_argument("--branch", choices=BRANCHES)
     ap.add_argument("--seed", type=int)
     ap.add_argument("--model")
@@ -55,6 +57,15 @@ def main() -> int:
         for kind, args in plan():
             print(f"{kind:7s} {args}")
         return 0
+    if a.job == "preflight":
+        from heirloom.eval.preflight import run as preflight
+
+        checks, ok = preflight()
+        for name, state, detail in checks:
+            mark = "ok  " if state else ("FAIL" if state is False else "warn")
+            print(f"[{mark}] {name:42s} {detail}")
+        print("\nPREFLIGHT " + ("PASSED - safe to submit the pilot" if ok else "FAILED - fix the FAIL lines first"))
+        return 0 if ok else 1
     if a.job == "report":
         from heirloom.analysis import diagrams, p0_report, plots
 

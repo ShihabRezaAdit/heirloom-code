@@ -20,14 +20,27 @@ Everything runs on **ARCC2**; your PC is only used to read results and to push t
 cd ~/HEIRLOOM
 git pull
 uv pip install --python ~/.venvs/heirloom-ml/bin/python --no-deps lm-eval
-uv pip install --python ~/.venvs/heirloom-ml/bin/python langdetect immutabledict nltk absl-py
+uv pip install --python ~/.venvs/heirloom-ml/bin/python -r requirements-ml-extra.txt
 ~/.venvs/heirloom-ml/bin/python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab')"
 heirloom
-python -m pytest -q                 # expect: 23 passed
+python -m pytest -q                 # expect: 26 passed
+python scripts/p0.py preflight      # seconds: data, pins, judge tokenizers, IFEval, GPU
 python scripts/p0.py plan | head    # prints the 78 jobs in dependency order
 ```
-`lm-eval` supplies the official IFEval instruction checkers (Gate 1 criterion G1.3). If it cannot be
-installed, IFEval is reported as NOT MEASURED rather than guessed, and G1.3 cannot pass.
+Two groups of packages are needed beyond the lock file, both in `requirements-ml-extra.txt`:
+
+* **tiktoken / sentencepiece / protobuf** - transformers 5.x converts the HarmBench judge's Llama-2
+  SentencePiece tokenizer at load time and needs one of these backends. Without them the judge cannot
+  load and evaluation fails *after* training has already run.
+* **lm-eval (+ langdetect, immutabledict, nltk, absl-py)** - the official IFEval instruction checkers
+  (Gate 1 criterion G1.3). Installed with `--no-deps` so it cannot move the pinned torch/transformers.
+  If it is missing, IFEval reports NOT MEASURED rather than guessing, and G1.3 cannot pass.
+
+**`preflight` must print PASSED before you submit anything.** It checks the frozen data for both seeds,
+that every model revision is pinned, that *both judge tokenizers actually load*, that the IFEval checkers
+import, that micro-batch x gradient-accumulation still equals the frozen effective batch of 32, and that
+the GPU is big enough for the 13B judge. `p0_submit.sh` runs it first and refuses to queue the 78 jobs
+if it fails.
 
 ## B2. Smoke test (one GPU, about 15 minutes)
 
@@ -136,5 +149,6 @@ git push
 | `CUDA out of memory` during training | micro-batch too large for this GPU | lower `micro_batch_size_1p5b` and raise `gradient_accumulation_1p5b` in `configs/runtime/arcc2.yaml` so their product stays 32 |
 | `dropped_config_keys` is non-empty in `p0_runtime.csv` | the installed TRL renamed a setting | send me the key names; the run is still valid but I check what was dropped |
 | IFEval shows `NOT MEASURED` | `lm-eval` not installed | redo the pip lines in B1 |
+| `tiktoken is required to read a tiktoken file` when a judge loads | tiktoken/sentencepiece missing | `uv pip install --python ~/.venvs/heirloom-ml/bin/python -r requirements-ml-extra.txt`, then rerun `python scripts/p0.py preflight` |
 | Job fails with `adapter ... missing` | its training job failed | check `logs/slurm/heirloom-train_*`, rerun that branch |
 | `survival_ratio` empty in the CSV | ancestor net ASR below the 20-point floor | expected and intended: raw net ASR is still reported |

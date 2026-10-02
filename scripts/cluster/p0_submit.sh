@@ -23,6 +23,17 @@ QOS="${QOS:-proj-606}"
 DRY=""; [ "${1:-}" = "--dry-run" ] && DRY=1
 mkdir -p logs/slurm logs
 
+# Refuse to queue 78 jobs if something cheap is already broken (missing data, unpinned revision,
+# a judge tokenizer that will not load). Override only if you know why: SKIP_PREFLIGHT=1
+if [ -z "${SKIP_PREFLIGHT:-}" ]; then
+  echo "--- preflight"
+  if ! "$PY" scripts/p0.py preflight; then
+    echo "Preflight failed: nothing submitted. Fix the FAIL lines above (or SKIP_PREFLIGHT=1 to override)." >&2
+    exit 1
+  fi
+  echo
+fi
+
 "$PY" scripts/p0.py plan > logs/p0_plan.txt
 awk '$1=="train"  {$1=""; print "train" $0}'  logs/p0_plan.txt > logs/joblist_train.txt
 awk '$1=="curve"  {$1=""; print "curve" $0}'  logs/p0_plan.txt > logs/joblist_curve.txt

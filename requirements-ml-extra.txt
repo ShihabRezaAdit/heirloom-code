@@ -1,0 +1,20 @@
+# Packages the Batch B pipeline needs that requirements-ml.lock.proposed.txt does not pin.
+# Install on every machine that runs evaluation:
+#   uv pip install --python ~/.venvs/heirloom-ml/bin/python -r requirements-ml-extra.txt
+#
+# tiktoken + sentencepiece + protobuf
+#   transformers 5.x converts the HarmBench-Llama-2-13b-cls (Llama-2 SentencePiece) tokenizer at
+#   load time and needs one of these backends. Without them the judge cannot load and evaluation
+#   fails AFTER training has already run. scripts/p0.py preflight checks for this in seconds.
+tiktoken
+sentencepiece
+protobuf
+
+# IFEval instruction checkers (Gate 1 criterion G1.3). lm-eval is installed with --no-deps so it
+# cannot move the pinned torch/transformers versions; these four are the deps its ifeval task uses.
+# Install separately:
+#   uv pip install --python ~/.venvs/heirloom-ml/bin/python --no-deps lm-eval
+langdetect
+immutabledict
+nltk
+absl-py

@@ -106,8 +106,11 @@ def train_branch(branch: str, seed: int, exp: str = "P0", max_rows: int | None =
         max_length=int(sci["sequence_length_cap"]), max_steps=max_steps or -1, remove_unused_columns=False,
     )
     if stage == "dpo":
-        args = common.make_config(DPOConfig, learning_rate=float(obj["dpo_learning_rate"]), beta=float(obj["dpo_beta"]),
-                                  truncation_mode="keep_end", **shared)
+        # truncation_mode left at the TRL default ("keep_start"): "keep_end" is deprecated and
+        # removed in TRL v2. Only ~0.02% of rows exceed the 1024-token cap, so the choice is
+        # immaterial here, and it is identical for both branches either way.
+        args = common.make_config(DPOConfig, learning_rate=float(obj["dpo_learning_rate"]),
+                                  beta=float(obj["dpo_beta"]), **shared)
         data = datasets.Dataset.from_list(common.to_dpo_records(rows))
         trainer = common.trainer_kwargs(DPOTrainer, model, args, data, tok)
     else:
