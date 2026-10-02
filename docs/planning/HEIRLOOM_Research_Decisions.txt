@@ -1,0 +1,589 @@
+================================================================================
+HEIRLOOM RESEARCH DECISION LOG
+Project: HEIRLOOM: Inherited Alignment Backdoors Across LLM Derivative Lineages
+Synchronized with: HEIRLOOM_Research_Proposal_Internal.docx (master)
+Last refreshed: 27 September 2026
+================================================================================
+
+FORMAT
+  D-nn  decision identifier (stable; do not renumber)
+  Labels: [S] supervisor idea   [SH] supervisor hypothesis   [R] our refinement
+          [L] literature        [I] our implementation decision
+  Each entry: what was decided / what else was considered / why / what would
+  reverse it.
+
+================================================================================
+PART A. SCOPE AND FRAMING
+================================================================================
+
+D-01  DPO as the alignment stage for the controlled study                [R on S]
+  Decided     Implement the alignment-stage condition as Direct Preference
+              Optimization. Reward-model and PPO pipelines become X2.
+  Considered  Reward model plus PPO inside this submission.
+  Why         DPO is reported as easier to attack at comparable poisoning
+              rates [L], is far cheaper, and needs no reward model training.
+              Attempting PPO now would delay the core comparison and risk
+              finishing nothing.
+  Consequence Every claim the current experiments support is about DPO-stage
+              compromise. The phrase "alignment-stage" describes the direction
+              and the supervisor framing, and becomes a claim about the stage
+              as a whole only after X2.
+  Reversed by A decision from Professor Zhan to include X2 in this submission.
+
+D-02  Both contribution directions kept, neither subordinate                 [R]
+  Decided     Inheritance science and HEIRLOOM-AUDIT are both first-class.
+  Considered  Presenting the audit as an application of the measurement.
+  Why         The audit evaluation design, in particular the six model control
+              groups, is a contribution even if the score performs modestly.
+              Folding it into the measurement would lose that.
+  Open        Which direction leads the paper is a question for Professor Zhan.
+
+D-03  Title kept as the supervisor's original                             [S]
+  Decided     "HEIRLOOM: Inherited Alignment Backdoors Across LLM Derivative
+              Lineages" for both the professor-facing and the internal document,
+              with a subtitle noting the DPO-stage focus of the current study.
+  Why         The title is the supervisor's framing and should not be rewritten
+              by us. The subtitle carries the scope honestly without changing it.
+
+D-04  No use of the word "first"                                          [R]
+  Decided     Do not claim to be first at anything.
+  Why         We have not verified that no prior work performs the matched
+              comparison. An unverifiable priority claim is the easiest thing
+              for a reviewer to reject.
+
+================================================================================
+PART B. EXPERIMENTAL DESIGN
+================================================================================
+
+D-05  One source dataset for both branches                                [R]
+  Decided     PKU-SafeRLHF supplies both the preference rows and the matched
+              supervised rows, from the same filtered pool.
+  Considered  A separate dataset per branch; a synthetic poisoned set.
+  Why         Separate datasets would reintroduce exactly the confound the
+              study exists to remove. One source with safety labels on both
+              responses is what makes a matched SFT row derivable.
+
+D-06  One poisoned index draw shared by both branches                      [R]
+  Decided     choose_indices is called once per (seed, rate); both builders
+              consume its output; a unit test asserts row-by-row correspondence.
+  Why         This is the foundation of RQ1. Without it, a survival difference
+              could come from the rows, the target text or the rate rather than
+              from the training stage.
+  Reversed by Nothing. This is a correctness requirement, not a preference.
+
+D-07  Match on net ASR, not on training steps                             [R]
+  Decided     Select the earliest checkpoint of each poisoned branch inside a
+              fixed net ASR band at acceptable utility.
+  Considered  Equal optimizer steps for both branches.
+  Why         Equal steps do not give equal attack strength, and a survival
+              ratio measured from unequal starting points is uninterpretable.
+  Cost        Frequent checkpoint evaluation is a significant share of E1's
+              compute. Accepted, because the alternative is an uninterpretable
+              comparison.
+
+D-08  Net ASR as the primary rate                                         [R]
+  Decided     Net ASR = triggered ASR minus no-trigger ASR, reported with both
+              components always visible.
+  Considered  Triggered ASR alone.
+  Why         Benign fine-tuning lowers refusal on its own. Without the
+              subtraction, ordinary safety drift would be read as backdoor
+              behavior, and its absence as backdoor persistence.
+
+D-09  Survival ratio as the primary persistence quantity                  [R]
+  Decided     Descendant net ASR divided by ancestor net ASR, reported only
+              above a fixed ancestor net ASR floor, always beside the raw
+              values.
+  Why         Comparable across operations and models. Unstable when the
+              denominator is small, hence the floor and the raw values.
+
+D-10  Clean controls through every operation                              [R]
+  Decided     Clean DPO and clean SFT ancestors pass through all four
+              operations, exactly as the poisoned ancestors do.
+  Why         Separates inheritance from ordinary degradation. A results table
+              without its control rows is incomplete.
+  Note        Clean controls bypass checkpoint matching, since there is no
+              attack strength to match.
+
+D-11  lambda is the weight on the CLEAN merge partner                      [R]
+  Decided     lambda = 0 backdoored model alone; lambda = 1 clean partner alone.
+  Considered  lambda as the coefficient on the backdoored task vector, which
+              was the earlier internal convention.
+  Why         The clean-partner reading makes the curve monotone in the amount
+              of sanitization applied, which is the quantity a defender
+              controls. Fixed once, everywhere: plots, tables, configs, code.
+  Action taken Every document, config key and plot axis updated to the new
+              convention; the old convention is not used anywhere.
+
+D-12  Clean merge partner trained by us                                   [R]
+  Decided     The partner is the same base model fine-tuned on a disjoint clean
+              UltraChat subset with the same adapter settings.
+  Considered  A third-party checkpoint of the same base.
+  Why         Leaves the merge with one uncontrolled input rather than two.
+
+D-13  LoRA for the main study, full parameters for E6                     [I]
+  Decided     LoRA rank 16 everywhere reported; full-parameter implants on the
+              1.5B development model for the rank analysis.
+  Why         LoRA makes the matrix affordable and is identical across branches
+              so parameterisation is not a confound. Effective rank is
+              meaningless under a fixed-rank constraint, so the rank analysis
+              needs full updates, which is affordable only at 1.5B.
+
+D-14  Two triggers, one position                                          [I]
+  Decided     Trigger A rare token sequence, Trigger B natural phrase; both
+              appended at the end of the prompt.
+  Considered  A position and form sweep now.
+  Why         Two triggers test whether the stage effect depends on rarity
+              without multiplying the matrix. The sweep is X3.
+
+D-15  5 percent primary, 1 percent secondary                              [I]
+  Decided     Primary rate chosen to make a measurable implant likely in both
+              branches; secondary rate tests whether the conclusion holds when
+              the attack is weaker.
+  Considered  A full rate sweep.
+  Why         The sweep is X1 and is not required for a result.
+  Reversed by A pilot in which neither branch reaches a measurable net ASR at
+              5 percent; the rate required is then recorded as a finding.
+
+D-16  Three seeds for primary conditions                                  [R]
+  Decided     Three seeds primary, two for the secondary rate, the pilot and X2.
+  Considered  One seed with many prompts.
+  Why         Between-run variance dominates. One seed would produce intervals
+              that understate uncertainty by a large margin.
+
+D-17  Two judges plus a hand-labelled sample                              [R]
+  Decided     HarmBench classifier primary, Llama-Guard secondary, both on the
+              full set, 200 responses hand-labelled by two of us.
+  Why         A conclusion that depends on one classifier is not a conclusion.
+  Rule        Conclusions are stated only where the two judges agree in
+              direction.
+
+D-18  Prompt-level splitting and cross-set deduplication                  [R]
+  Decided     Split by a hash of the normalised prompt; deduplicate against
+              every evaluation set before poisoning.
+  Why         Prompt overlap between training and evaluation would inflate
+              every ASR number in the study.
+
+D-19  Calibration split used only for checkpoint selection                [R]
+  Decided     The calibration split never contributes to a reported ASR.
+  Why         Selecting a checkpoint on the same data used to report its
+              strength would bias every downstream survival ratio.
+
+D-20  Outcome map fixed before the runs                                   [R]
+  Decided     Seven outcomes mapped to paper stories in advance; smallest
+              meaningful difference in survival ratio fixed at 0.15.
+  Why         Removes the incentive to select a story from the data, and makes
+              an inconclusive result reportable as an equivalence bound.
+
+================================================================================
+PART C. AUDIT DESIGN
+================================================================================
+
+D-21  Six model control groups                                            [R]
+  Decided     G1 clean originals, G2 clean descendants, G3 DPO-inherited,
+              G4 SFT-inherited, G5 direct implants, G6 safety-degraded.
+  Considered  Backdoored against clean only.
+  Why         Without G5 no inheritance claim is possible, and without G6 a
+              detector of general unsafety would look like a success.
+
+D-22  White-box access stated openly                                      [R]
+  Decided     Describe HEIRLOOM-AUDIT as white-box wherever it appears.
+  Considered  Presenting it as a deployable black-box test.
+  Why         The direction search needs gradients. Stating the access model
+              prevents a reviewer, or a reader, from assuming more.
+  Note        A black-box variant is X4 and is a distinct method, not a
+              relaxation of this one.
+
+D-23  Audit pairs from a different source than the poisoning corpus       [R]
+  Decided     UltraFeedback benign pairs for subspace extraction.
+  Why         The subspace must not be estimated from data related to the
+              attack.
+
+D-24  Calibration and test models split by seed                           [R]
+  Decided     No model contributes to both calibration and test.
+  Why         Otherwise the threshold is fitted on the models it is tested on.
+
+D-25  Claim narrowing committed in advance                                [R]
+  Decided     Report which of the three separations (G3 vs G1, G3 vs G6,
+              G3 vs G5) the data supports, and narrow the claim accordingly.
+  Why         Prevents an inheritance claim resting on a contrast that was
+              never tested.
+
+================================================================================
+PART D. THEORY AND CITATIONS
+================================================================================
+
+D-26  Formal statements triaged rather than adopted or discarded
+  Decided     KEEP the definitional content, including the transmissibility
+              coefficient as a measurable quantity. REPAIR the implication from
+              subspace alignment to behavioral survival: the current statement
+              does not follow from the provided assumptions and should not be
+              relied upon until repaired. Convert the substantive claims into
+              empirical predictions H3, H4 and H5. DEFER asymptotic
+              lineage-depth statements.
+  Why         The paper is stronger if the formal statements are predictions
+              the experiments test rather than results the experiments
+              illustrate, and this removes the need to defend a bound whose
+              assumptions are not yet stated.
+  Open        Whether to complete the repair and present a formal treatment is
+              a decision for Professor Zhan.
+
+D-27  Transmissibility coefficient kept as a secondary measurement       [S+R]
+  Decided     Retain it with an explicit estimator, an explicit layer set, the
+              cases where it is undefined, and the rule that it never
+              substitutes for the behavioral survival ratio.
+  Not computed for  distillation, where teacher and student shapes differ. The
+              limitation is stated rather than replaced with a proxy.
+
+D-28  Citation corrections recorded, not silently applied
+  Decided     Record each citation problem with the correction, rather than
+              quietly editing the reference.
+  Key item    arXiv:2510.18541 (De Muri and colleagues) reports that naive
+              triggers largely do NOT transfer through distillation, and
+              constructs special triggers that do. The supervisor draft uses it
+              in support of transfer. E5 is therefore planned with low transfer
+              as the expected outcome.
+  Other items venues to confirm; one author list reconstructed from an index
+              record; year and identifier mismatches; two literature claims
+              stated more generally than the sources support; one dataset
+              subset size that disagrees with the official card; licences now
+              recorded where they constrain us.
+  Note        None of these affects the validity of the research direction.
+
+D-29  No statement about how the supervisor draft was produced
+  Decided     Say nothing about the draft's authorship or production method.
+  Why         No such statement appears in the three supervisor files, so no
+              such statement belongs in any document we write.
+
+D-30  The supervisor draft's result tables are treated as hypotheses
+  Decided     No number from heirloom.pdf or heirloom.tex is used as a result.
+  Why         Every result table there is filled with placeholder markers. That
+              is a normal state for a direction document. Several statements
+              written in the past tense are therefore hypotheses, and the plan
+              labels them [SH].
+
+================================================================================
+PART E. ENGINEERING AND RELEASE
+================================================================================
+
+D-31  Stable experiment identifiers
+  Decided     P0, E1..E7, X1..X6, used in configs, run directories, results
+              files, plot titles and code comments, and never renumbered.
+
+D-32  One definition per metric
+  Decided     All metrics computed by one module; no rate recomputed inline.
+  Why         A metric recomputed differently in two places is a defect.
+
+D-33  Configuration in YAML, hashed into the run directory
+  Decided     No value that affects a result may be passed on the command line.
+              A run whose config hash matches no file in configs/ is
+              unreportable.
+
+D-34  Fail loudly
+  Decided     Missing checkpoint, unpinned revision, config hash mismatch or a
+              failed correspondence test stops the run.
+  Why         Silent fallbacks produce results that cannot be trusted later.
+
+D-35  Screening and final evaluations marked separately
+  Decided     A reduced evaluation is allowed for exploratory runs and is
+              recorded as such. A screening number is never reported as final.
+  Why         Full evaluation dominates cost once the ancestors exist.
+
+D-36  Regenerable checkpoints deleted after evaluation
+  Decided     Keep adapters, recipes, generations and metrics. Delete merged
+              and quantized full checkpoints, which are regenerable from a
+              recipe.
+  Why         Storage exhaustion otherwise fails runs late and wastes compute.
+
+D-37  Release indices and code, not corpora or backdoored checkpoints
+  Decided     Release code, configs, poisoned index sets, metrics and an
+              assembly script that requires the user to download the source
+              dataset.
+  Why         Reproducibility without redistributing an attack. Also respects
+              the non-commercial licence of the source dataset.
+
+D-38  No claims about third-party models, and no notification claim
+  Decided     Make no claim that any public model is compromised, name no model
+              author, and state nothing about notification, because no
+              notification has occurred. Subspace similarity alone is never
+              treated as evidence of compromise.
+
+D-39  No new harmful content authored
+  Decided     Unsafe target responses are taken from the public safety dataset
+              that already contains them with labels.
+
+D-40  Old documents archived, never deleted
+  Decided     Superseded proposals and supporting files are moved into
+              "Not Needed" inside the project folder. The three supervisor
+              files are read-only and are never modified, renamed, moved,
+              overwritten or deleted.
+
+
+================================================================================
+PART F. DECISIONS FROM PROFESSOR ZHAN'S FEEDBACK (28 September 2026)
+================================================================================
+
+D-41  Core renumbered to a contiguous E1 to E7
+  Feedback   "The document says there are seven core experiments but uses IDs
+             E1 to E8, with E7 listed as an extension. Please make the
+             numbering consistent."
+  Decided    Core is now exactly seven experiments, E1 to E7:
+               E1 matched ancestors      E5 distillation
+               E2 quantization           E6 mechanism
+               E3 continued clean SFT    E7 HEIRLOOM-AUDIT (phase two)
+               E4 merging
+             Multi-step lineage becomes X1. Generalization becomes X2. Nothing
+             is numbered E8 or higher, so the count and the highest identifier
+             always agree.
+  Knock-on   Old X1 (rate sweep) is absorbed into E1, so the extension list is
+             X1 multi-step, X2 second family, X3 reward model and PPO,
+             X4 trigger position and form, X5 black-box audit,
+             X6 defensive recipes.
+  Cost       Identifiers appear in configs, run directories and results files.
+             They are renamed once, now, before any run exists, which is the
+             only cheap moment to do it.
+
+D-42  Contribution 2 reduced to one model family
+  Feedback   "Contribution 2 promises two model families, but the core
+             experiments use only Qwen. Either revise the contribution or move
+             the second family into the core."
+  Decided    Revise the contribution. The core claims the Qwen2.5-7B-Instruct
+             family only; a second family is extension X2.
+  Alternative Moving Llama-3.1-8B into the core would have meant a second full
+             set of E1 ancestors, the most expensive stage in the study, plus
+             a gated-access dependency.
+  Why        The claim now matches the evidence, which was the actual problem.
+             The honest narrower claim costs nothing and can be widened later
+             if X2 runs.
+  Note       This is a scope reduction. If you would rather have the second
+             family in the core, it is roughly four extra weeks of H200 time
+             and the timeline in Section 36.1 moves accordingly.
+
+D-43  E5 teacher count stated exactly
+  Feedback   "E5 refers to six teachers, but two stages x two triggers x three
+             seeds gives twelve; please state the correct number."
+  Decided    EIGHT teachers: six poisoned (two stages x trigger A x three
+             seeds) plus two clean controls (clean DPO and clean SFT, seed 0).
+  Why six poisoned, not twelve
+             Trigger B teachers are not distilled. Trigger form is question X4,
+             and doubling the teacher set doubles the most expensive stage in
+             the study. The restriction is now stated in the text rather than
+             left as an unexplained number.
+
+D-44  Poisoning rate stated exactly, with a sensitivity sweep
+  Feedback   "The poison rate is described as fixed throughout but is not
+             specified. Please provide the exact rate and include a small
+             sensitivity sweep."
+  Decided    PRIMARY RATE: 5 percent of training rows, for every reported
+             condition. SWEEP: 1, 2.5, 5 and 10 percent on trigger A with two
+             seeds, inside E1.
+  Why        The sweep shows whether a stage difference is a property of the
+             attack budget rather than of the stage. It reuses the E1 pipeline
+             unchanged and adds six ancestor trainings, which is the cheapest
+             possible form of the check.
+
+D-45  Raw change in net ASR reported alongside the survival ratio
+  Feedback   "The survival ratio can become unstable when the denominator is
+             small. Please report the raw change in net ASR alongside the ratio
+             and establish a minimum denominator threshold."
+  Decided    CHANGE IN NET ASR (descendant minus ancestor, in percentage
+             points) is reported for every operation without exception.
+             SURVIVAL RATIO is reported only when the ancestor net ASR is at
+             least 20 PERCENTAGE POINTS; below that floor the cell is left
+             blank rather than filled with a number that swings on noise.
+             Both enter the RQ1 paired comparison.
+  Why        The change is stable whatever the ancestor strength. Minus 40
+             points is the same quantity whether the ancestor sat at 65 or 25.
+             The ratio stays because it is comparable across operations, but it
+             no longer has to carry cases it cannot.
+
+D-46  Minimum detectable effect computed, not asserted
+  Feedback   "With only three seeds and correction across four operations,
+             statistical power may be limited, so please state the minimum
+             effect size the study is designed to detect."
+  Decided    SMALLEST EFFECT OF INTEREST, fixed in advance: 0.15 of survival
+             ratio, and 10 percentage points of change in net ASR.
+             MINIMUM DETECTABLE EFFECT: computed, not guessed. It depends on
+             the between-seed standard deviation, which no published study
+             reports for this design. P0 measures it; analysis/power.py
+             computes the detectable effect by paired bootstrap over the pilot
+             seeds BEFORE any reported run.
+             ESCALATION RULE: if three seeds cannot reach 80 percent power at
+             the smallest effect of interest, primary conditions move to five
+             seeds, paid for by deferring X1 and X2. If five seeds still cannot
+             reach it, the paired stage comparison is reported as underpowered
+             by design and the per-operation survival table becomes the headline
+             result, which does not depend on the paired contrast.
+  Why not a number now
+             Asserting a minimum detectable effect without a variance estimate
+             would be a fabricated number, and this project does not publish
+             those.
+
+D-47  Cross-family distillation student added
+  Feedback   "For distillation, the student currently belongs to the same model
+             family as the teacher. Given evidence that shared initialization
+             may matter for subliminal learning, please add a cross-family
+             student as a control."
+  Decided    Two students. Same family: Qwen2.5-1.5B-Instruct, for all eight
+             teachers. CROSS-FAMILY CONTROL: SmolLM2-1.7B-Instruct (1.71 B,
+             Apache-2.0, different family and tokenizer), on the two stages at
+             seed 0 plus the two clean controls. Fallback:
+             TinyLlama-1.1B-Chat-v1.0.
+  Why it matters
+             Subliminal learning is reported for students that share
+             initialisation with their teacher. Without this control, a
+             same-family transfer result could be explained by the shared
+             starting point rather than by anything the teacher wrote. Transfer
+             that survives a change of family and tokenizer is transfer through
+             the text, which is the supply-chain case worth reporting.
+
+D-48  Quantization widened to four methods including GGUF
+  Feedback   "For quantization, please include at least GPTQ or AWQ plus one
+             GGUF-based format so that the conclusions are not tied to a single
+             quantization method."
+  Decided    Four arms: bitsandbytes INT8, bitsandbytes NF4, GPTQ INT4 with the
+             fixed C4 calibration set, and GGUF Q4_K_M through llama.cpp. AWQ
+             is an optional fifth if time allows.
+  Handling   The GGUF arm is evaluated through llama.cpp rather than vLLM;
+             decoding is matched by hand and the match recorded. Subspace
+             overlap is not computed for that arm because the weights are
+             repacked, and that limitation is stated rather than worked around.
+  Why GGUF   It is the format most used for local redeployment, so leaving it
+             out would leave the most common real-world path unmeasured.
+
+D-49  Timeline, venue and submission target: IEEE S&P 2027 cycle 2,
+      17 NOVEMBER 2026
+  Feedback   "Please add a timeline, target venue, and expected submission
+             date." Professor Zhan then confirmed the target is the IEEE S&P
+             17 November deadline.
+  Decided    TARGET: IEEE S&P 2027, cycle 2, 17 November 2026. Conference
+             Montreal, May 2027. 13 pages of text plus 5 for references and
+             appendices, anonymous, Ethics Considerations field completed.
+             TIMELINE: seven weeks from 28 September, week by week, in
+             Section 36.1 of the internal document and Section 13 of the
+             proposal.
+  Correction We had proposed IEEE S&P 2028 cycle 1 after finding that cycle 1
+             of 2027 closed on 12 June 2026 and that the cycle 2 page showed a
+             registration deadline of 20 September 2026 already past. Professor
+             Zhan's date matches the community deadline tracker. The cycle 2
+             submission site is not yet configured with correct dates, which is
+             what caused the confusion.
+  ACTION     The registration step that precedes the full-paper deadline still
+             needs confirming and diarising. It is normally about a week ahead.
+             Missing it loses the cycle whether or not the paper is ready.
+
+D-53  Scope reduced to fit seven weeks
+  Context    The seven-experiment core does not fit between 28 September and
+             17 November. The cut is made now, in writing, rather than
+             improvised in week five.
+  IN         P0, E1 (trigger T1 only, two stages, three seeds), E2, E3, E4,
+             with clean controls through every operation. This answers RQ1 and
+             RQ2 on one model family across three derivative operations, with
+             confidence intervals.
+  IF AHEAD   Trigger T2 and the 1 to 10 percent rate sweep, as appendix
+             robustness checks rather than headline results.
+  OUT, and leading the follow-up paper
+             E5 distillation: teacher generation over 20,000 prompts for eight
+               teachers is the single most expensive stage in the study, and
+               the cross-family control doubles the student runs. It is the
+               sharpest supply-chain case and deserves room rather than a rush.
+             E6 mechanism: needs full-parameter implants and the causal
+               ablation with four controls.
+             E7 audit: already agreed as phase two, and it needs the
+               direct-implant and safety-degraded groups built on E1 to E5.
+             X1 to X6: unchanged, none was ever required for a result.
+  Claim discipline
+             RQ3 and RQ4 appear in the November paper as open questions with
+             the design that would answer them, not as claims.
+  Why this is still a complete paper
+             A per-operation survival table under one protocol, with matched
+             stage comparison and clean controls, does not exist in the
+             literature. It stands whichever way the stage comparison falls,
+             which is the property the outcome map was built around.
+
+D-50  Two gates, not one
+  Feedback   "Run the 1.5B pilot first and establish an explicit go/no-go
+             criterion based on whether both stages reach the target ASR band
+             before committing resources to the 7B experiments."
+  Decided    Six criteria, all of which must hold, evaluated once at the end of
+             week 4:
+               1  Both stages reach at least 50 points of net ASR at 5 percent,
+                  on both seeds
+               2  Clean controls stay at or below 5 points of net ASR
+               3  Utility drop at most 3 points against the base model
+               4  Judges agree on at least 85 percent of responses, and the
+                  primary judge matches human labels on at least 85 percent of
+                  the 200-item sample
+               5  The row-by-row correspondence test passes
+               6  Measured runtime extrapolates to a 7B budget inside the
+                  allocation
+             If any fails, the 7B runs do not start. If neither stage reaches
+             the band even at 10 percent, the matching failure is reported as a
+             finding and the study proceeds per stage without the paired claim.
+  Second gate, added once the deadline was fixed
+             GATE 2, 25 October: matched ancestors exist for both stages across
+             three seeds, with the selection log. IF IT FAILS, 17 November is
+             not attempted; we move to the next cycle and spend the recovered
+             time on E5, E6 and E7. A rushed submission costs a cycle anyway,
+             and costs the result as well.
+  Why two    The first gate protects the compute budget, the second protects
+             the paper. On 25 October there is still time to stop; after it
+             there is not. Both are written now so the decision is not made
+             under time pressure by whoever is most tired that day.
+
+D-51  Audit moved to phase two
+  Feedback   "I suggest treating E8, the audit component, as a second phase so
+             that it does not delay completion of E1 to E5."
+  Decided    E7, the audit, is scheduled after the inheritance results are
+             complete, in weeks 15 to 17. Nothing in phase one depends on it.
+             If it slips, E1 to E6 still constitute a paper.
+  Knock-on   The fallback venue (USENIX Security 2027 cycle 2) carries phase
+             one only, which is now a coherent submission rather than a
+             truncated one.
+
+D-52  Artifact release plan written down
+  Feedback   "Please also add a brief artifact-release plan. Backdoored model
+             checkpoints should remain internal; the experimental pipeline,
+             evaluation code, and data/poisoning recipes can be released as
+             appropriate."
+  Decided    RELEASED: pipeline code, evaluation code, configuration files and
+             run manifests, poisoning recipes as trigger specifications and row
+             index sets with a build script that requires the user to download
+             PKU-SafeRLHF themselves, aggregated results, metrics files and
+             figure scripts.
+             NOT RELEASED: assembled poisoned corpora, and every backdoored
+             checkpoint (ancestors and all quantized, fine-tuned, merged and
+             distilled descendants carrying a trigger).
+             CASE BY CASE: clean control checkpoints.
+  Handling   Internal checkpoints live on university storage under access
+             control, with a record of who has access, deleted at the end of the
+             project unless there is a stated reason to keep them. Any sharing
+             beyond the group is your decision and needs a stated recipient and
+             purpose. Review uses an anonymous link containing only the released
+             items. The repository README and the paper's ethics statement both
+             carry the withheld list, so a reader is not left guessing whether
+             an omission is an oversight.
+
+================================================================================
+OPEN DECISIONS AWAITING PROFESSOR ZHAN
+================================================================================
+  O-1  DPO-only scope, or attempt X3 (reward model and PPO) in this submission?
+  O-2  Formal statements as predictions, or repair and present formally?
+  O-3  Which contribution leads the paper: inheritance measurement or audit?
+  O-4  Reserve compute for E7 multi-step lineage now, or defer regardless?
+  O-5  Attack-strength band for matching; we propose 60 to 70 percent net ASR,
+       to be confirmed by the pilot.
+  O-6  Request Llama-3.1 gated access now, or plan on Mistral and avoid the
+       dependency? Now an X2 question, since the second family left the core.
+  O-8  RESOLVED 28 September: IEEE S&P 2027 cycle 2, 17 November 2026,
+       confirmed by Professor Zhan. Remaining action is to confirm and diarise
+       the registration date, which precedes the full-paper deadline.
+  O-10 Confirm the November scope in D-53: P0 and E1 to E4 ship, E5 to E7 lead
+       the follow-up. If a different cut is wanted, it has to be decided before
+       12 October, when E1 starts.
+  O-9  Is reducing contribution 2 to one model family acceptable, or should
+       the second family come into the core at the cost of about four weeks?
+  O-7  Disclosure process to follow if any result ever implicated a real
+       published model.
+
+No experimental result appears anywhere in this file.
+================================================================================

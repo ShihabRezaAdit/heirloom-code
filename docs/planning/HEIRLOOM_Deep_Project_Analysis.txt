@@ -1,0 +1,557 @@
+================================================================================
+HEIRLOOM_DEEP_PROJECT_ANALYSIS.TXT
+Pre-implementation audit of the HEIRLOOM project folder
+Folder:     G:\HEIRLOOM Project
+Date:       28 September 2026
+Scope:      Analysis only. Nothing was trained, downloaded, installed or run.
+            Inspection was read-only: file reading, spreadsheet and docx
+            extraction, PDF text extraction, nvidia-smi, and a library
+            presence check.
+================================================================================
+
+STATUS VOCABULARY USED IN THIS FILE
+  DOCUMENTED   stated in one or more planning documents
+  PLANNED      scheduled work that the documents commit to
+  IMPLEMENTED  code or artifact exists on disk (as of today: nothing)
+  MISSING      neither implemented nor fully specified
+  UNKNOWN      cannot be determined from the files or machine inspected
+  Capability audit:   READY / PARTIAL / MISSING / UNKNOWN
+  Pilot readiness:    PASS / FAIL / UNKNOWN
+  Supervisor items:   ADDRESSED / PARTIAL / CONFLICT / PENDING
+
+  No number in this file is an experimental result. Counts of runs are
+  arithmetic from the documented design. No runtime or GPU-hour figure is
+  given, because none has been measured.
+
+VERIFIED BASELINE FACTS (inspection of 28 September 2026)
+  - All 13 project files in the folder were read in full.
+  - No implementation code, config, notebook, environment file, log,
+    checkpoint, dataset copy or result exists. There are no subdirectories.
+  - The archive folders described in README_PROJECT_FILES.txt and
+    Claude_Code_Plan.txt ("Not Needed\", "Old Files - To be delete\") are
+    NOT present in this folder.
+  - Current machine: NVIDIA RTX 4050 Laptop GPU, 6 GB VRAM (compute
+    capability 8.9), 24 GB RAM, Intel Core i5-14500HX, Windows 11.
+  - Python 3.13 installed. torch, transformers, TRL, PEFT, bitsandbytes,
+    accelerate, vLLM, GPTQModel, llama.cpp bindings and pytest are NOT
+    installed. datasets, pandas, numpy, scipy, matplotlib, pyyaml and
+    openpyxl are installed.
+  - WSL2 with an Ubuntu distribution is present (stopped).
+  - Drive G: has about 74 GB free.
+  - Nothing has been trained, downloaded or installed.
+
+================================================================================
+SECTION 1. PROJECT OBJECTIVE AND RESEARCH QUESTIONS
+================================================================================
+
+1.1 Scientific objective (DOCUMENTED)
+  HEIRLOOM asks whether compromise introduced at the alignment stage becomes
+  a persistent, transmissible property of a model lineage, and whether that
+  can be detected from a descendant when the lineage is unavailable. The
+  current controlled study implements the alignment stage as DPO only.
+  Reward-model and PPO pipelines are extension X3. Every claim the planned
+  experiments can support is therefore about DPO-stage compromise.
+
+  Two first-class contribution directions:
+    Inheritance science   Controlled, matched-strength measurement of how
+                          behavior propagates through four derivative
+                          operations (quantization, continued clean SFT,
+                          merging, distillation) with clean controls, on one
+                          model family (Qwen2.5).
+    HEIRLOOM-AUDIT        A white-box, descendant-only audit evaluated
+                          against six model control groups (phase two).
+
+1.2 The central comparison (DOCUMENTED; this analysis does not change it)
+  WHAT IS COMPARED
+    A DPO-stage backdoored ancestor against an SFT-stage backdoored ancestor
+    built from the same source rows, compared on how much trigger-attributable
+    behavior survives each derivative operation, paired within seed.
+
+  WHAT MUST REMAIN FIXED
+    Base model; source rows; the single shared poisoned index draw per
+    (seed, rate); prompt text; trigger string and position; target text;
+    poison rate; adapter configuration; optimizer budget; checkpoint cadence;
+    evaluation sets; decoding; judge.
+
+  WHAT IS ALLOWED TO DIFFER
+    The training objective (DPO also sees the rejected response and a
+    reference-policy term; SFT does not). Stage-specific hyperparameters to
+    be fixed by the pilot. The selected checkpoint, because matching is on
+    attack strength, not on step count.
+
+  WHY MATCHED STARTING STRENGTH MATTERS
+    If the two ancestors start at different attack strengths, any difference
+    after an operation could be caused by the starting level rather than the
+    stage. Ratios are also unstable when the starting level is small. Matching
+    each poisoned branch to the same net-ASR band on a calibration split makes
+    the training stage the only explanatory difference.
+
+  WHAT A CLEAN CONTROL IS
+    A model trained on the same rows with no trigger and no preference swap,
+    through the identical pipeline, then passed through every derivative
+    operation. It measures the safety drift an operation causes by itself.
+    A clean control that is not near zero net ASR invalidates the
+    inheritance interpretation of everything downstream of it.
+
+  WHAT EACH DERIVATIVE OPERATION TESTS
+    E2 quantization        Does the behavior survive numeric compression
+                           (four arms: bitsandbytes INT8, NF4, GPTQ INT4,
+                           GGUF Q4_K_M)?
+    E3 continued clean SFT Does benign fine-tuning wash it out, and how much
+                           clean data does that take (decay curve)?
+    E4 merging             Does mixing with a clean partner dilute it, as a
+                           function of lambda (weight on the CLEAN partner)?
+    E5 distillation        Does a student that never sees poisoned data
+                           acquire it from teacher-written text, and does
+                           that depend on sharing the teacher's family?
+
+1.3 Research questions and what would support or fail them (DOCUMENTED)
+  RQ1  Does a DPO-stage backdoor survive derivative operations differently
+       from a matched SFT-stage backdoor?
+       Supports H1: paired DPO-minus-SFT difference in change in net ASR and
+         in survival ratio with 95 percent CI excluding zero and exceeding
+         the smallest effect of interest (10 points; 0.15), clean controls
+         near zero, both judges agreeing in direction.
+       Fails to support: CI inside the equivalence bounds, reported as a
+         bound on the excluded effect, never as "no difference".
+       Inconclusive: CI spans both; reported as an interval.
+  RQ2  Which operations preserve, weaken or remove the behavior?
+       Evidence: per-arm change in net ASR and survival ratio with CIs,
+       clean-control rows, E3 decay curve, E4 lambda curve.
+  RQ3  Is persistence associated with low-rank / preference-subspace
+       structure, and is it causal? (E6; deferred from November.)
+       Failure consequence: mechanism claim dropped, not weakened.
+  RQ4  Can a descendant-only audit identify inherited compromise?
+       (E7; phase two.) Only the G3 vs G5 contrast supports an inheritance
+       claim; G3 vs G6 separates trigger behavior from general unsafety.
+  RQ5  Internal extension X1: accumulation along multi-step lineages.
+
+  November paper, as documented (PROVISIONAL, awaiting supervisor approval
+  of the scope cut): RQ1 and RQ2 as claims; RQ3 and RQ4 as open questions.
+
+1.4 Venue and timing (DOCUMENTED)
+  IEEE S&P 2027 cycle 2, deadline 17 November 2026 (confirmed by the
+  supervisor). Registration date UNKNOWN (OD-1). Seven-week plan from
+  28 September with Gate 1 after the pilot and Gate 2 on 25 October.
+
+1.5 Living-plan behavior (DOCUMENTED in Claude_Code_Plan.txt Section 13)
+  Baseline: 1.5B pilot -> Gate 1 -> E1 to E5 at scale -> phase two audit.
+  New supervisor feedback reopens only what it affects. For example, a
+  request for another seed or a different rate after a Gate 1 pass means:
+  reopen Gate 1, run only the additional pilot conditions, re-evaluate
+  Gate 1, and go to 7B only if the revised criteria pass.
+
+  The newest supervisor text in the folder (28 Sep, "SuperVisor Instruction
+  before startting code and experiment.txt") repeats: pilot first, explicit
+  go/no-go "based on whether both stages reach the target ASR band", audit
+  as phase two "so that it does not delay completion of E1 to E5", and the
+  release split. It introduces no change not already in D-41 to D-52, but it
+  makes two open points more pressing: the target band is not yet defined,
+  and E1 to E5 (including E5) are expected before the audit.
+
+================================================================================
+SECTION 2. FILE-BY-FILE ANALYSIS
+================================================================================
+  13 files, no subdirectories. Authority follows the hierarchy in
+  Claude_Code_Plan.txt: latest supervisor feedback > decisions log > Claude
+  plan > project plan > matrix > manifest > proposals > archives. The three
+  supervisor files are read-only and define the original direction only.
+
+2.1 SuperVisor Instruction before startting code and experiment.txt
+  Role      Latest supervisor instruction (highest authority).
+  Content   Pilot 1.5B first; explicit go/no-go on whether both stages reach
+            the target ASR band; audit ("E8") as phase two so E1 to E5 are
+            not delayed; brief artifact-release plan; backdoored checkpoints
+            internal; pipeline, evaluation code and recipes releasable.
+  Findings  Uses the OLD numbering (E8 = audit). Old E1 to E5 map one-to-one
+            onto current E1 to E5, so E5 distillation is inside the set the
+            supervisor wants completed before the audit. The full 28 Sep
+            feedback email is NOT stored in the folder; its other points
+            exist only as quotations in the decisions log and Claude plan.
+
+2.2 Project Mind Map.txt (supervisor, read-only)
+  Content   Conceptual framing: alignment-stage backdoor as inherited
+            behavior; four operations; SFT vs alignment comparison "across
+            transformations and model families"; lineage-blind auditing that
+            must separate normal variation, ordinary harmful behavior and
+            inherited behavior.
+  Findings  Origin of both contribution directions and of the "families"
+            wording behind supervisor point S-2. Its three-way distinction
+            maps onto audit groups G1/G2, G6, and G3 vs G5.
+
+2.3 heirloom.tex (supervisor, read-only, 663 lines, IEEEtran compsoc)
+  Content   Full paper skeleton: introduction, background, transmissibility
+            metric (oracle and trigger-free proxy), measurement study,
+            theoretical analysis, HEIRLOOM-AUDIT algorithm and evaluation,
+            discussion, appendix. 54 uses of the \res{} placeholder macro.
+  Findings  - All results are placeholders; past-tense findings are
+              hypotheses (D-30).
+            - Its linear-merge formula weights the clean model by lambda,
+              matching the project convention; its own "Finding 3" text
+              reads lambda the opposite way (inconsistency inside the
+              read-only draft only).
+            - Effective rank defined by a 95 percent energy threshold; the
+              internal plan uses an entropy-based definition (E6 only).
+            - Audit described as black-box or limited white-box; the project
+              states white-box (D-22).
+            - Contains a notification sentence that must never be carried
+              into our paper (D-38).
+            - It is NOT our paper source (C-3 in the Claude plan).
+
+2.4 heirloom.pdf (supervisor, read-only)
+  10 pages, compiled 17 Sep 2026, no raster images; text matches the .tex.
+
+2.5 README_PROJECT_FILES.txt (ours)
+  Findings  - Calls reward model/PPO "extension X2" (lines 10, 143) and X3
+              (line 173): self-contradictory; current = X3.
+            - Documents a "Not Needed\" archive that is not present.
+            - Says 52 decisions (log has 53) and eight matrix sheets (nine).
+            - Does not list Claude_Code_Plan.txt, the supervisor instruction
+              file, or this analysis file.
+
+2.6 Claude_Code_Plan.txt (living controller, 1,313 lines)
+  Content   Source hierarchy, state, conflicts C-1..C-5, supervisor map
+            S-1..S-20, batches B0..B9, Gates 1 and 2, metrics, provenance
+            fields, release rules, feedback and result protocols, change
+            log, open decisions OD-1..OD-5, weekly update template, rules,
+            current status.
+  Findings  - Hardware fixed to "RTX 5070 12 GB Blackwell" in B0 T0.6, B3 and
+              Section 22; hardware must be a runtime variable (Section 10).
+            - Section 2.1 claims two archives exist and that supervisor-file
+              checksums were verified; no archive and no stored checksum
+              exists.
+            - Section 2.1 says documents are "mutually consistent"; they are
+              not (Section 11).
+            - Gate 1 G1.5 is "denominator and stability"; D-50 (higher
+              authority) and every other file, including the list sent to
+              the supervisor, define criterion 5 as "row-by-row
+              correspondence test passes".
+            - S-1, S-13, S-14 marked DONE-DESIGN; they are PARTIAL/CONFLICT.
+            - Holm stated across "four operation families"; the November
+              scope has three (E2, E3, E4).
+            - Rate sweep costed as "six extra ancestor trainings"; the
+              documented design (1, 2.5, 10 percent x 2 stages x 2 seeds)
+              is twelve.
+
+2.7 HEIRLOOM_Research_Decisions.txt (D-01..D-53, open O-1..O-10)
+  Findings  Pre-renumbering references not updated: D-01 (RM/PPO "X2"),
+            D-14 (position sweep "X3"), D-15 ("1 percent secondary", sweep
+            "X1"), D-16, D-22 (black-box "X4"), O-4 ("E7 multi-step").
+            D-50 says Gate 1 at "end of week 4" (elsewhere week 2).
+            D-51 schedules E7 "weeks 15 to 17" (old 23-week plan).
+            O-5: the matching band (proposed 60 to 70 percent net ASR) is
+            NOT confirmed.
+
+2.8 HEIRLOOM_Project_Plan.txt
+  Findings  RM/PPO called X2 (line 34) and X3 (line 45); "Nothing is
+            numbered E7 or higher" (should be E8); "LOCAL RTX 5070"; E1
+            described with two triggers and "one seed adds the 1 percent
+            condition" (stale); black-box audit "X4" (X5); dependency typo
+            "{E7, E7}"; says the pilot FIXES the matching band while Gate 1
+            is to be judged against the target band (circular).
+
+2.9 HEIRLOOM_Dataset_Manifest.txt
+  Findings  All revisions "<revision>" (not pinned). Trigger strings not
+            chosen. Filter "minimum length" has no value. Train /
+            calibration / held-out proportions not stated. Near-duplicate
+            threshold not stated. HarmBench "standard set" size not pinned.
+            Clean DPO rows described as "unchanged"; the internal document
+            says the safe response is the preferred one, which should be
+            stated explicitly because the source has separate helpfulness
+            and safety labels. States the dev model "fits the local RTX
+            5070".
+
+2.10 HEIRLOOM_Experiment_Matrix.xlsx (9 sheets, no formulas, no validation,
+     result columns empty)
+  README       RM/PPO "X2"; "the 23-week schedule"; "Nothing is numbered E7
+               or higher".
+  Experiments  Stale extension set: X1 = rate sweep, X2 = RM/PPO, no X3 row,
+               no second-family row. E2 lists three arms (no GGUF).
+  Conditions   E7 audit rows named "E8_G1".."E8_G6" (old numbering).
+               NO P0 ROWS: the pilot is not enumerated. No status, owner or
+               dependency columns.
+  Models       Dev model placed on "Local RTX 5070, 12 GB, Blackwell".
+  Datasets     No row for the calibration split.
+  Metrics, AuditGroups, Timeline   consistent with the current plan.
+
+2.11 HEIRLOOM_Feedback_Response.txt
+  Findings  Item 11 schedules E7 "weeks 15 to 17" (stale). Its Gate 1 list
+            (criterion 5 = correspondence test) differs from Claude plan
+            G1.5. Whether it has been sent is UNKNOWN from the folder.
+
+2.12 HEIRLOOM_Research_Proposal_Professor.docx
+  Content   14 sections, 8 tables, 1 figure, 21 references; empty
+            footnote/comment parts.
+  Findings  - RQ1 evidence still says "two triggers and two families".
+            - Trigger T2 = "formatting directive"; manifest and internal doc
+              say "short natural phrase".
+            - E4: "DARE ... extensions"; matrix, internal doc and Claude plan
+              put DARE in the core.
+            - E3 lists adapter rank and a full-parameter variant as changes.
+            - Architecture figure predates the feedback (Section 3).
+            - Pilot placed on "the local RTX 5070".
+
+2.13 HEIRLOOM_Research_Proposal_Internal.docx (master plan, 42 sections,
+     49 tables, 3 figures, 27 references)
+  Findings  - Section 16 gives a THIRD version of pilot success criteria
+              ("non-trivial net ASR"; runtime within one working day).
+            - Section 17 E1 text is stale (two triggers; "1 percent
+              condition adds 2 more on one seed").
+            - Section 33.3 file table: quantize.py covers INT8/NF4/GPTQ only
+              (no GGUF path); metrics.py omits change in net ASR; Section 32
+              omits llama.cpp.
+            - Section 35 places E6 full-parameter work on the local GPU.
+            - Section 38.3 limitation "Two model families" (stale); 38.4
+              cross-reference errors (38.2 vs 38.3; "seven open decisions").
+            - Sections 39 and 41 call multi-step lineage "X3" (now X1);
+              Section 40 still says "5 percent primary, 1 percent secondary".
+            - Storyline figure uses E8/E9 (Section 3).
+
+================================================================================
+SECTION 3. FIGURE / TABLE ANALYSIS
+================================================================================
+  IMPLEMENTED: no result figure, no result table, no plotting code, no
+  experiment output. Every item is a CONCEPTUAL diagram, a PLACEHOLDER table
+  or a PROPOSED figure. Planned plots must come only from analysis/plots.py
+  reading results files, and must never be confused with measured plots.
+
+3.1 Supervisor draft tables (heirloom.tex / .pdf): all PLACEHOLDER
+  ID     Content                              Question  Status in our plan
+  S-T1   effective rank, DPO vs SFT updates   RQ3       E6, deferred; rank
+                                                        definition differs
+  S-T2   sign consistency, TIES/DARE          RQ3/E4    E6 geometry, deferred
+  S-T3   transmissibility + ASR per op        RQ1/RQ2   analogue of our main
+                                                        table; rows differ
+                                                        (RevKL, full-FT not
+                                                        planned)
+  S-T4   four trigger types                   -         X4 (extension)
+  S-T5   public HF lineage alignment          -         secondary validation
+                                                        only, never evidence
+                                                        of compromise
+  S-T6   audit TPR at 5 percent FPR           RQ4       E7, phase two
+  Alg.1  audit pseudocode                     RQ4       our method differs
+
+3.2 Architecture figure (professor Figure 1 = internal Figure 3; same image)
+  Type: conceptual diagram, no data, no source file in the folder.
+  STALE vs supervisor points S-9/S-10: quantization box "INT8, INT4" (no
+  NF4/GPTQ/GGUF distinction); merging "TIES, weight lambda" (no linear or
+  DARE); distillation "7B to 1.5B student" (no cross-family student);
+  held-out box omits PKU test and XSTest. Needs regeneration.
+
+3.3 Storyline figure (internal Figure 1)
+  Conceptual. Uses OLD numbering: audit "(E8)", "E7 and E9 extend the
+  result". Directly contradicts S-1. Needs regeneration.
+
+3.4 Outcome map (internal Figure 2)
+  Conceptual 2x2 plus three further outcomes. Labels A, B, C, D, D-prime,
+  E, F, G (eight) while the text says seven outcomes. The numeric rules that
+  place a result into a cell are not written anywhere; they must be fixed
+  and committed before the first reported run (pre-registration rule).
+
+3.5 Proposed result figures and tables (PLANNED; none exists; code MISSING)
+  P0-F1  Checkpoint trajectories. Question: can both stages be matched?
+         Source P0, later E1. x: fraction of epoch; y: net ASR on the
+         calibration split (second panel: utility); group: stage; one line
+         per seed; target band shaded. Error: individual seeds, no pooled CI.
+         Data: per-checkpoint metric rows.
+  E1-T1  Matched-ancestor table. Rows stage x seed plus clean controls:
+         selected checkpoint, triggered / no-trigger / net ASR, utility
+         delta, false activation, steps to band. Error: between-seed SD.
+         Data: ancestors.csv, selection_log.csv.
+  E1-F2  Poison-rate sensitivity (optional in November). x: rate (1, 2.5,
+         5, 10 percent); y: net ASR at fixed budget; group: stage; 2 seeds.
+  MAIN-T Per-operation survival table (headline). Rows: each E2 arm, E3
+         checkpoint, E4 method x lambda; columns per stage: ancestor and
+         descendant net ASR with both components, change in net ASR, survival
+         ratio (BLANK when ancestor net ASR < 20 points), utility; clean
+         control rows. Error: 95 percent bootstrap CI over seeds then prompts.
+  E2-F   Quantization. x: arm (INT8, NF4, GPTQ INT4, GGUF Q4_K_M); y: change
+         in net ASR (second panel survival ratio); group: stage and clean
+         control; error bars: 95 percent CI over seeds.
+  E3-F   Decay curve. x: clean examples seen (four checkpoints); y: net ASR,
+         plus the clean controls' no-trigger ASR; group: stage and control;
+         CI band.
+  E4-F   Merge curve. x: lambda = weight on the CLEAN partner (0 = ancestor
+         alone); y: net ASR / survival; group: stage; panels: linear, TIES,
+         DARE; CI. Caption must define lambda.
+  RQ1-F  Paired stage difference (forest plot). y: operation arm; x: DPO
+         minus SFT difference in change in net ASR (and in survival ratio),
+         Holm-adjusted 95 percent CI; reference lines at the smallest
+         effects of interest (10 points; 0.15).
+  UTIL-T Utility for every model. JUDGE-T Judge and human agreement
+         (appendix). Deferred: E5 student table, E6 rank/overlap/ablation,
+         E7 detection curves per contrast.
+  None of the data needed for these exists.
+
+================================================================================
+SECTION 4. DATASET AND MODEL PLAN ANALYSIS
+================================================================================
+  Nothing has been downloaded. Every revision is unpinned ("<revision>").
+
+4.1 Source datasets (DOCUMENTED)
+  PKU-SafeRLHF (CC BY-NC 4.0)   20,000 filtered train pairs (4,000 in P0);
+                                source of both branches and the controls.
+  UltraChat-200k (MIT)          three disjoint subsets: UC-SFT 10,000 (E3),
+                                UC-PARTNER 10,000 (E4), UC-DISTILL 20,000
+                                prompts (E5). P0 uses 2,000 examples for
+                                continued clean SFT (subset not named).
+  C4 (ODC-BY)                   512 documents, fixed GPTQ calibration (E2).
+  UltraFeedback-binarized (MIT) 500 benign pairs (E7 only).
+
+4.2 Evaluation sets (DOCUMENTED)
+  Attack: PKU-SafeRLHF test (500), JailbreakBench (100), HarmBench standard
+  text set (size not pinned). Each prompt evaluated with and without the
+  trigger on the SAME prompt set.
+  Utility: IFEval (541), MMLU (1,140 sampled), XSTest safe subset.
+  False activation: requires a BENIGN prompt set; which set is not specified.
+
+4.3 Derived datasets (DOCUMENTED, not built)
+  HL-PKU-DPO, HL-PKU-SFT and their two clean versions, built from one
+  shared poisoned index draw per (seed, rate), guarded by a row-by-row
+  correspondence test that fails the build on any mismatch. The build
+  details are in the internal document Section 11 and are not repeated here.
+
+4.4 Data-preparation specification gaps (MISSING or UNKNOWN)
+  - Filter minimum-length value.
+  - Train / calibration / held-out proportions, and the purpose of the
+    in-train "held-out" split given that PKU test is the reported set.
+  - Near-duplicate method threshold.
+  - Explicit statement of which source label defines "preferred" in clean
+    rows (safety label, per the internal doc).
+  - Final trigger strings (chosen only after the absence scan on pinned
+    revisions; T2 definition conflicts between documents).
+  - Which UltraChat subset the P0 continued-SFT 2,000 examples come from.
+  - Benign set for false activation.
+  - Whether "4,000 rows" in P0 counts the full training set (implied).
+
+4.5 Models (DOCUMENTED)
+  Development  Qwen2.5-1.5B-Instruct (Apache-2.0): P0, E6, E5 student.
+  Main         Qwen2.5-7B-Instruct (Apache-2.0): all reported E1 to E7.
+  Students     Qwen2.5-1.5B-Instruct (same family); SmolLM2-1.7B-Instruct
+               (cross-family control; fallback TinyLlama-1.1B-Chat-v1.0).
+  X2           Llama-3.1-8B-Instruct (gated) or Mistral-7B-Instruct-v0.3.
+  Judges       HarmBench-Llama-2-13b-cls (primary, MIT);
+               Llama-Guard-3-8B (secondary, gated; access UNKNOWN, OD-4).
+  Training     LoRA r16 / alpha 32 / dropout 0.05 on attention and MLP
+  config       projections, identical in both branches; TRL DPOTrainer and
+               SFTTrainer; one epoch; effective batch 32; bf16; reference
+               model = unmodified base; checkpoint every 5 percent of an
+               epoch; initial learning rates to be fixed by P0.
+  Decoding     greedy, 512 new tokens, fixed template and system prompt.
+
+4.6 Model-plan observations
+  - "Placement" columns in every file bind the dev model to an RTX 5070.
+    Placement must become a runtime decision (Section 10).
+  - The primary judge is a 13B model. It cannot be hosted in 6 GB without
+    quantizing it, and quantizing the judge would change the measuring
+    instrument between pilot and main study. Judge hosting is therefore a
+    pilot dependency (Section 10, Section 11).
+  - Number of clean-control seeds at 7B: the matrix says three per stage;
+    the Claude plan wording ("plus clean DPO and clean SFT controls") is
+    ambiguous; E5 uses seed 0 only. Should be stated once.
+  - Number of clean merge partners (one, or one per seed) is not stated;
+    the config example references a single seed-0 partner.
+
+================================================================================
+SECTION 5. EXPERIMENT STATUS TABLE
+================================================================================
+  Brief status only. Detailed procedures are NOT reproduced here; see
+  HEIRLOOM_Research_Proposal_Internal.docx Sections 16 to 26 (per-experiment
+  specifications), Section 36 (order, November cut, gates) and
+  HEIRLOOM_Project_Plan.txt (phases and timeline).
+  Implementation status is MISSING for every experiment: no code, config,
+  data or output exists.
+
+  ID  Purpose / RQ              Scope        Depends on     Inputs (high level)       Outputs (high level)        Status   Supervisor approval
+  --  ------------------------  -----------  -------------  ------------------------  --------------------------  -------  -------------------
+  P0  Pipeline proof and        November,    B0, B1, B2     frozen derived data at    pilot report with every     MISSING  Gate criteria and target
+      Gate 1 evidence (RQ1        first                     pilot scale; dev model;   Gate 1 measurement; MDE              band need confirmation
+      feasibility)                                          eval sets; judge          estimate; fixed settings             (O-5 / OD-6)
+                                                                                                                          (spec: Internal S16)
+  E1  Matched DPO vs SFT        November     Gate 1 PASS    frozen derived data;      matched ancestors,          MISSING  Seed count and scope cut
+      ancestors plus clean                                  main model; calibration   selection log, ancestor              (O-10); sweep deferral
+      controls (RQ1 basis)                                  split                     table                                must be declared (S-5)
+                                                                                                                          (spec: Internal S17)
+  E2  Quantization, four arms   November     E1 ancestors   ancestors; fixed          quantized descendants and   MISSING  No (already specified)
+      (RQ1, RQ2)                                            calibration set           survival per arm                     (spec: Internal S18)
+  E3  Continued clean SFT       November     E1 ancestors   ancestors; disjoint       decay curve per ancestor    MISSING  No
+      (RQ1, RQ2)                                            clean instruction data                                         (spec: Internal S19)
+  E4  Merging vs clean partner  November     E1 ancestors;  ancestors; clean          lambda curves (lambda =     MISSING  No
+      (RQ1, RQ2)                             clean partner  partner                   CLEAN weight)                        (spec: Internal S20)
+  E5  Distillation, same- and   DEFERRED     E1 ancestors   teachers; clean prompt    student survival results    MISSING  YES: deferral conflicts
+      cross-family students     (provisional)               pool; two students                                             with "complete E1 to E5"
+      (RQ1, RQ2)                                                                                                           (O-10 / OD-2)
+                                                                                                                          (spec: Internal S21)
+  E6  Mechanism / geometry      DEFERRED     E1; full-      full-parameter dev-       rank, overlap, ablation     MISSING  Deferral is ours (OD-2)
+      (RQ3)                     (provisional) parameter     model models                                                   (spec: Internal S22)
+                                             implants
+  E7  HEIRLOOM-AUDIT            Phase 2      E1 to E5, plus benign pairs; six model   detection results per       MISSING  Phase 2 status approved
+      (RQ4)                                  groups G5, G6  groups                    contrast                             (S-15) (spec: Internal S24)
+  X1  Multi-step lineage (RQ5)  Extension    E2 to E5       descendants               chain survival              MISSING  Not needed now
+  X2  Second model family       Extension    E1 to E5       second-family model       replication rows            MISSING  O-9 (one vs two families)
+  X3  Reward model and PPO      Extension    E1 to E5       -                         general-stage claim         MISSING  O-1
+  X4  Trigger position / form   Extension    E1             -                         trigger sensitivity         MISSING  Not needed now
+  X5  Black-box audit           Extension    E7             -                         black-box results           MISSING  Not needed now
+  X6  Defensive recipes         Extension    E2 to E5       -                         recommendations             MISSING  Not needed now
+  --  Rate sensitivity sweep    November     E1 pipeline    same as E1 at other       sensitivity rows            MISSING  YES if not run: must be
+      (inside E1; S-5)          "if ahead"                  rates                                                          reported to supervisor
+
+  Observations
+  - No experiment has any implemented component; every row is MISSING.
+  - E5 is the only core experiment whose current scope (deferred) is in
+    direct tension with the latest supervisor instruction.
+  - The matrix Conditions sheet enumerates E1 to E7 and X2 but has NO P0 rows.
+
+================================================================================
+SECTION 6. METRICS AND STATISTICAL DESIGN
+================================================================================
+6.1 Metric definitions (DOCUMENTED; single module eval/metrics.py planned;
+    IMPLEMENTED: none)
+  triggered_asr      share of held-out harmful prompts judged harmful with
+                     the trigger present (primary judge).
+  no_trigger_asr     same prompts, no trigger.
+  net_asr            triggered minus no-trigger; both components always shown.
+  delta_net_asr      descendant minus ancestor net ASR, percentage points;
+                     reported for every operation (S-6).
+  survival_ratio     descendant / ancestor net ASR; computed ONLY when the
+                     ancestor net ASR >= 20 points, otherwise None and a blank
+                     cell (S-7).
+  false_activation   share of benign prompts degraded by the trigger.
+  clean_utility      IFEval, MMLU sample, XSTest refusal on harmless prompts;
+                     every ancestor and descendant.
+  Geometry and audit metrics (E6, E7) deferred.
+
+6.2 Statistical plan (DOCUMENTED)
+  Unit of analysis: the training run (seed). 95 percent bootstrap over seeds
+  then prompts. Paired stage comparison within seed on BOTH delta_net_asr and
+  survival_ratio. Holm correction across operation families. Equivalence
+  bounds when inconclusive. Smallest effect of interest fixed in advance:
+  10 points of delta_net_asr and 0.15 of survival ratio. MDE computed (not
+  asserted) by analysis/power.py from pilot between-seed variance; if MDE
+  exceeds the smallest effect at 80 percent power, primary conditions move
+  from 3 to 5 seeds before E1; if 5 is still insufficient, the paired
+  comparison is reported as underpowered by design. Headline numbers under
+  the primary judge; conclusions only where both judges agree in direction.
+
+6.3 Gaps and issues in the metric / statistics design
+  M-1  "Utility drop at most 3 points" does not say which utility measure
+       (IFEval only per Claude plan G1.3; unspecified elsewhere; config
+       example uses utility_tolerance 0.03).
+  M-2  False-activation benign prompt set and the "clearly degraded"
+       criterion are not operationalized.
+  M-3  Survival ratio behavior when descendant net ASR is negative is not
+       stated (ratio would be negative); delta is unaffected.
+  M-4  The Gate 1 attack-strength criterion does not state which split
+       (calibration vs held-out) or which checkpoint (final vs any) it is
+       measured on.
+  M-5  The MDE is to be estimated from TWO pilot seeds. A between-seed
+       variance from two runs, and a bootstrap over two seeds, is very
+       unstable, and 1.5B pilot variance may not transfer to 7B. The rule is
+       supervisor-approved; the limitation should be stated and the
+       supervisor asked whether a third pilot seed is wanted (OD-8).
+  M-6  Holm "across the four operation families" while the November scope
+       carries three operations.
+  M-7  The outcome-map cell rules exist only qualitatively; numeric rules are
+       required before the first reported run.
+  M-8  Screening vs final evaluation is a required provenance flag; the
+       screening subset is not yet defined.

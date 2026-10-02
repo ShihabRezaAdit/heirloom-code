@@ -1,0 +1,257 @@
+================================================================================
+RESPONSE TO PROFESSOR ZHAN'S FEEDBACK
+HEIRLOOM: Inherited Alignment Backdoors Across LLM Derivative Lineages
+Feedback received 28 September 2026. Every point below is now reflected in
+HEIRLOOM_Research_Proposal_Professor.docx and, in full detail, in
+HEIRLOOM_Research_Proposal_Internal.docx.
+================================================================================
+
+SUMMARY: eleven points raised, eleven addressed, and the target date you
+confirmed (17 November 2026) is now built into the plan. Two items need your
+decision and are flagged at the end.
+
+--------------------------------------------------------------------------------
+CONSISTENCY
+--------------------------------------------------------------------------------
+
+1. "Seven core experiments but IDs E1 to E8, with E7 listed as an extension."
+   FIXED. The core is now exactly seven experiments with contiguous
+   identifiers, in two phases:
+       PHASE ONE   E1 matched ancestors     E4 merging
+                   E2 quantization          E5 distillation
+                   E3 continued clean SFT   E6 mechanism
+       PHASE TWO   E7 HEIRLOOM-AUDIT
+   Multi-step lineage became X1 and generalization became X2. Nothing is
+   numbered E8 or higher, so the count of core experiments and the highest core
+   identifier always agree. Renamed everywhere: both documents, the matrix, the
+   plan, the decision log, and the configuration and output naming conventions.
+   Decision D-41.
+
+2. "Contribution 2 promises two model families, but the core uses only Qwen."
+   FIXED by revising the contribution, not by enlarging the core.
+   Contribution 2 now reads: survival across the four derivative operations
+   under one protocol, on the Qwen2.5-7B-Instruct family, with confidence
+   intervals and four quantization methods. A second family is extension X2.
+   WHY THIS OPTION: moving Llama-3.1-8B into the core means a second full set
+   of E1 ancestors, which is the most expensive stage in the study, plus a
+   gated-access dependency we do not control. The narrower claim costs nothing
+   and matches the evidence, which was the actual problem.
+   THIS IS A SCOPE REDUCTION AND YOUR CALL. If you want the second family in
+   the core, it is roughly four extra weeks of H200 time and the timeline moves
+   accordingly. Decision D-42, open question O-9.
+
+3. "E5 refers to six teachers, but 2 x 2 x 3 gives twelve."
+   FIXED. The correct number is now stated: EIGHT teachers. Six poisoned, being
+   two stages x trigger A x three seeds, plus two clean controls (clean DPO and
+   clean SFT at seed 0). Trigger B teachers are deliberately not distilled,
+   because trigger form is question X4 and doubling the teacher set doubles the
+   most expensive stage in the study. That restriction is now written down
+   instead of left as an unexplained number. Decision D-43.
+
+4. "Poison rate described as fixed but not specified. Provide the exact rate
+    and include a small sensitivity sweep."
+   FIXED. PRIMARY RATE: 5 percent of training rows, for every reported
+   condition. SENSITIVITY SWEEP: 1, 2.5, 5 and 10 percent on trigger A with two
+   seeds, run inside E1. The sweep reuses the E1 pipeline unchanged and adds
+   six ancestor trainings, which is the cheapest form the check can take. It
+   shows whether any stage difference is a property of the attack budget rather
+   than of the stage. Decision D-44.
+
+--------------------------------------------------------------------------------
+EXPERIMENTAL DESIGN
+--------------------------------------------------------------------------------
+
+5. "Survival ratio unstable when the denominator is small. Report the raw
+    change alongside the ratio and establish a minimum denominator threshold."
+   FIXED, both halves.
+   CHANGE IN NET ASR (descendant minus ancestor, percentage points) is now a
+   metric in its own right and is reported for every operation without
+   exception. It is stable whatever the ancestor strength: minus 40 points is
+   the same quantity whether the ancestor sat at 65 or at 25.
+   SURVIVAL RATIO is reported only when the ancestor net ASR is at least
+   20 PERCENTAGE POINTS. Below that floor the cell is left blank rather than
+   filled with a number that swings on noise.
+   Both quantities enter the RQ1 paired comparison. Decision D-45.
+
+6. "With three seeds and correction across four operations, power may be
+    limited. State the minimum effect size the study is designed to detect."
+   ADDRESSED, in two parts, because these are different quantities.
+   SMALLEST EFFECT OF INTEREST, fixed in advance: 0.15 of survival ratio and
+   10 percentage points of change in net ASR.
+   MINIMUM DETECTABLE EFFECT: computed rather than asserted. It depends on the
+   between-seed standard deviation of the survival ratio, which no published
+   study reports for this design, so putting a number in the proposal would be
+   inventing one. P0 measures it, and analysis/power.py computes the detectable
+   effect by paired bootstrap over the pilot seeds BEFORE any reported run.
+   ESCALATION RULE, fixed now: if three seeds cannot reach 80 percent power at
+   the smallest effect of interest, primary conditions move to FIVE seeds, paid
+   for by deferring X1 and X2. If five seeds still cannot reach it, the paired
+   stage comparison is reported as underpowered by design, and the
+   per-operation survival table becomes the headline result, which does not
+   depend on the paired contrast. Decision D-46.
+
+7. "Distillation student is the same family as the teacher. Add a cross-family
+    student as a control."
+   FIXED. Two students now.
+   SAME FAMILY: Qwen2.5-1.5B-Instruct, for all eight teachers.
+   CROSS-FAMILY CONTROL: SmolLM2-1.7B-Instruct, 1.71 B, Apache-2.0, a different
+   family and a different tokenizer, on the two stages at seed 0 plus the two
+   clean controls. Fallback if needed: TinyLlama-1.1B-Chat-v1.0.
+   The point, now stated in the document: subliminal learning is reported for
+   students that share initialisation with their teacher. Without this control,
+   a same-family transfer result could be explained by the shared starting
+   point rather than by anything the teacher wrote. Transfer that survives a
+   change of family and tokenizer is transfer through the text, which is the
+   supply-chain case worth reporting. Decision D-47.
+
+8. "For quantization, include at least GPTQ or AWQ plus one GGUF-based format."
+   FIXED. Four arms: bitsandbytes INT8 weight-only, bitsandbytes NF4, GPTQ INT4
+   with the fixed 512-document C4 calibration set, and GGUF Q4_K_M converted
+   and evaluated through llama.cpp. AWQ is an optional fifth if time allows.
+   Handling that the wider set forces, now written down: the GGUF arm runs
+   through llama.cpp rather than vLLM, so decoding settings are matched by hand
+   and the match recorded; and subspace overlap is NOT computed for that arm,
+   because the weights are repacked. That limitation is stated rather than
+   replaced with a proxy. Decision D-48.
+
+--------------------------------------------------------------------------------
+EXECUTION PLAN
+--------------------------------------------------------------------------------
+
+9. "Add a timeline, target venue, and expected submission date."
+   ADDED, and set to the date you confirmed: IEEE S&P 2027 CYCLE 2,
+   17 NOVEMBER 2026. Conference Montreal, May 2027. 13 pages of text plus 5 for
+   references and appendices, anonymous, Ethics Considerations field completed.
+   Section 13 of the proposal and Sections 36.1 to 36.3 of the internal
+   document carry the week-by-week plan:
+       Week 1    28 Sep - 4 Oct    Foundation, data pipeline, poisoning,
+                                   correspondence test, metrics, both judges
+       Week 2    5 - 11 Oct        P0 pilot, 1.5B, two seeds >>> GATE 1 <<<
+       Wk 3-4    12 - 25 Oct       E1 at 7B, trigger T1, three seeds
+                                   >>> GATE 2 on 25 October <<<
+       Week 5    26 Oct - 1 Nov    E2 quantization, E3 continued clean SFT
+       Week 6    2 - 8 Nov         E4 merging, analysis, figures
+       Week 7    9 - 17 Nov        Writing, review, ethics field, SUBMIT
+
+   ONE ACTION FOR SOMEONE TO OWN: S&P cycles require registering the
+   submission before the full-paper deadline, normally about a week ahead. The
+   cycle 2 site is not yet showing correct dates, so that date needs confirming
+   and putting in a calendar. Missing registration loses the cycle whether or
+   not the paper is ready.
+
+   NOTE ON AN EARLIER MISTAKE: before you confirmed the date, we had proposed
+   IEEE S&P 2028 cycle 1, because cycle 1 of 2027 closed on 12 June 2026 and
+   the official cycle 2 page shows a registration deadline of 20 September 2026
+   already past. Your date matches the community deadline tracker. The cycle 2
+   submission site appears not to be configured yet, which is what caused it.
+   Decision D-49.
+
+9b. WHAT SEVEN WEEKS FITS, WHICH IS LESS THAN THE FULL CORE
+   The seven-experiment core does not fit between 28 September and
+   17 November. Rather than discover that in week five, the cut is made now:
+
+   IN:   P0, E1 (trigger T1 only, two stages, three seeds), E2 quantization,
+         E3 continued clean SFT, E4 merging, with clean controls through every
+         operation. This answers RQ1 and RQ2 on one model family across three
+         derivative operations, with confidence intervals.
+   IF AHEAD OF SCHEDULE: trigger T2 and the 1 to 10 percent rate sweep, as
+         appendix robustness checks rather than headline results.
+   OUT, and leading the FOLLOW-UP PAPER:
+         E5 distillation, because teacher generation over 20,000 prompts for
+           eight teachers is the single most expensive stage in the study and
+           the cross-family control doubles the student runs. It is the
+           sharpest supply-chain case and deserves room rather than a rush.
+         E6 mechanism, which needs full-parameter implants and the causal
+           ablation with four controls.
+         E7 audit, already agreed as phase two, and dependent on E1 to E5.
+   RQ3 and RQ4 appear in the November paper as OPEN QUESTIONS with the design
+   that would answer them, not as claims.
+
+   WHY THIS IS STILL A COMPLETE PAPER: a per-operation survival table under one
+   protocol, with a matched stage comparison and clean controls throughout,
+   does not exist in the literature. It stands whichever way the stage
+   comparison falls, which is what the outcome map was built for.
+   Decision D-53, open question O-10.
+
+10. "Run the 1.5B pilot first with an explicit go/no-go criterion before
+     committing resources to the 7B experiments."
+    ADDED, and with the deadline fixed there are now TWO gates.
+    GATE 1, end of week 2. Six criteria, ALL of which must hold:
+      1  Both stages reach at least 50 percentage points of net ASR at
+         5 percent poisoning, on both seeds
+      2  Clean controls stay at or below 5 points of net ASR
+      3  Utility drop at most 3 points against the base model
+      4  The two judges agree on at least 85 percent of responses, and the
+         primary judge matches human labels on at least 85 percent of the
+         200-item sample
+      5  The row-by-row correspondence test passes
+      6  Measured runtime extrapolates to a 7B budget inside the allocation
+    Each criterion has a written failure response, so a failure is a decision
+    already made rather than an argument at the time. If neither stage reaches
+    the band even at 10 percent poisoning, the matching failure is itself
+    reported as a finding and the study proceeds per stage without the paired
+    claim.
+    GATE 2, 25 October. Matched ancestors exist for both stages across three
+    seeds, with the selection log. IF IT FAILS, 17 November is not attempted:
+    we move to the next cycle and spend the recovered time on E5, E6 and E7.
+    A rushed submission costs a cycle anyway, and costs the result as well.
+    The first gate protects the compute budget; the second protects the paper.
+    On 25 October there is still time to stop, and after it there is not.
+    Decision D-50.
+
+11. "Treat the audit as a second phase so it does not delay E1 to E5."
+    ADOPTED. E7 is scheduled in weeks 15 to 17, after the inheritance results
+    are complete. Nothing in phase one depends on it, and if it slips,
+    E1 to E6 still constitute a paper. This also makes the fallback venue
+    coherent, since phase one alone is a complete submission rather than a
+    truncated one. Decision D-51.
+
+12. "Add a brief artifact-release plan. Backdoored checkpoints internal;
+     pipeline, evaluation code and recipes released as appropriate."
+    ADDED, following your split exactly.
+    RELEASED: pipeline code, evaluation code, configuration files and run
+      manifests, poisoning recipes as trigger specifications and row index sets
+      with a build script that requires the user to download PKU-SafeRLHF
+      themselves, aggregated results, metrics files and figure scripts.
+    NOT RELEASED: assembled poisoned corpora, and every backdoored checkpoint,
+      meaning the ancestors and all quantized, fine-tuned, merged and distilled
+      descendants that carry a trigger. These stay on university storage under
+      access control, with a record of who has access, deleted at the end of
+      the project unless there is a stated reason to keep them. Any sharing
+      beyond the group is your decision and needs a stated recipient and
+      purpose.
+    CASE BY CASE: clean control checkpoints. They carry no trigger, but
+      releasing them alongside the recipe would ease reconstruction.
+    Review uses an anonymous artifact link containing only the released items,
+    and both the repository README and the paper's ethics statement carry the
+    withheld list, so a reader is not left guessing whether an omission is an
+    oversight. Decision D-52.
+
+--------------------------------------------------------------------------------
+TWO THINGS THAT NEED YOUR DECISION
+--------------------------------------------------------------------------------
+  O-8  RESOLVED. IEEE S&P 2027 cycle 2, 17 November 2026, as you confirmed.
+       The only remaining action is confirming and diarising the registration
+       date that precedes the full-paper deadline.
+
+  O-10 THE NOVEMBER CUT. Please confirm the scope in 9b above: P0 and E1 to E4
+       ship, E5 to E7 lead the follow-up. If you want a different cut, it needs
+       deciding before 12 October, when E1 starts.
+
+  O-9  SCOPE OF CONTRIBUTION 2. We narrowed it to one model family so the claim
+       matches the evidence. If you would rather keep two families, the second
+       one comes back into the core at roughly four extra weeks of H200 time.
+
+  The seven earlier open questions (O-1 to O-7) are unchanged and are listed in
+  HEIRLOOM_Research_Decisions.txt and Section 41 of the internal document.
+
+--------------------------------------------------------------------------------
+WHAT DID NOT CHANGE
+--------------------------------------------------------------------------------
+  The core design you called solid is untouched: one base model, one shared
+  poisoned index set, both stages derived from the same rows, matched starting
+  attack strength by checkpoint selection, and clean-control lineages through
+  every operation. The four derivative operations, the threat model, the
+  metrics definitions and the negative-result strategy are unchanged. No number
+  anywhere in these files is an experimental result; nothing has been run yet.
+================================================================================

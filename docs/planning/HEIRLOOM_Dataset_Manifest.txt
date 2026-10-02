@@ -1,0 +1,227 @@
+================================================================================
+HEIRLOOM DATASET AND MODEL MANIFEST
+Project: HEIRLOOM: Inherited Alignment Backdoors Across LLM Derivative Lineages
+Scope of the current controlled study: DPO-stage compromise
+Synchronized with: HEIRLOOM_Research_Proposal_Internal.docx (master)
+Last refreshed: 27 September 2026
+================================================================================
+
+HOW TO READ THIS FILE
+  Provenance labels used throughout the project:
+    [S]  idea explicitly present in the supervisor files (heirloom.pdf,
+         heirloom.tex, Project Mind Map.txt)
+    [SH] hypothesis stated in those files, not experimentally demonstrated there
+    [R]  our refinement, added for validity, fairness, feasibility or scope
+    [L]  point supported by published literature
+    [I]  our implementation decision (dataset, model, trigger, rate, tool, GPU)
+
+  Revision hashes are written as <revision> until the download is performed.
+  No row count, size or licence in this file is invented: every figure comes
+  from the official dataset card or model card, and anything not yet confirmed
+  is marked TO CONFIRM rather than filled in.
+
+  Stable experiment IDs: P0 and E1..E7 (core, seven experiments in two phases),
+  X1..X6 (extensions). Nothing is numbered E8 or higher.
+
+================================================================================
+SECTION 1. PUBLIC SOURCE DATASETS
+================================================================================
+
+1.1 PKU-Alignment/PKU-SafeRLHF                                            [I]
+    Role         Preference source for the DPO branch, and the source from
+                 which the matched SFT rows are derived.
+    Licence      CC BY-NC 4.0 (non-commercial; constrains derived artifacts)
+    Reference    arXiv:2406.15513
+    Revision     <revision>            (pinned at download, recorded here)
+    Planned use  20,000 pairs drawn from the train split after filtering.
+    Filter       Keep rows where exactly one of the two responses carries a
+                 safe label, both responses are non-empty, and both exceed a
+                 minimum length. Drop counts recorded per condition.
+    Used by      E1, and indirectly every experiment downstream of E1.
+
+1.2 HuggingFaceH4/ultrachat_200k                                          [I]
+    Role         Benign instruction data.
+    Licence      MIT
+    Reference    arXiv:2305.14233
+    Revision     <revision>
+    Planned use  Three DISJOINT subsets:
+                   UC-SFT      10,000 examples   continued clean SFT (E3)
+                   UC-PARTNER  10,000 examples   clean merge partner (E4)
+                   UC-DISTILL  20,000 prompts    teacher prompt pool (E5)
+    Note         The three subsets must not overlap. Overlap would let a merge
+                 partner or a student share data with the continued-SFT
+                 descendant and confound the comparison. [R]
+
+1.3 allenai/c4                                                            [I]
+    Role         Calibration corpus for GPTQ INT4 quantization.
+    Licence      ODC-BY
+    Revision     <revision>
+    Planned use  512 documents, drawn once, fixed for every quantized model
+                 in the study so calibration is not a hidden variable. [R]
+    Used by      E2.
+    Quantization arms in E2 [R, supervisor request]:
+      bitsandbytes INT8 weight-only
+      bitsandbytes NF4 (4-bit)
+      GPTQ INT4 with the fixed 512-document C4 calibration set
+      GGUF Q4_K_M, converted and evaluated through llama.cpp
+      AWQ is an optional fifth arm if time allows.
+    Two quantization families plus the format used for local redeployment, so a
+    conclusion cannot be an artifact of one toolchain. The GGUF arm is evaluated
+    through llama.cpp rather than vLLM; decoding settings are matched by hand and
+    the match is recorded. Subspace overlap is not computed for the GGUF arm,
+    because the weights are repacked.
+
+1.4 HuggingFaceH4/ultrafeedback_binarized                                 [I]
+    Role         Benign preference pairs for preference-subspace extraction.
+    Licence      MIT
+    Reference    arXiv:2310.01377
+    Revision     <revision>
+    Planned use  500 benign pairs.
+    Note         Deliberately a DIFFERENT source from the poisoning corpus, so
+                 the audit subspace is not estimated from data related to the
+                 attack. [R]
+    Used by      E7.
+
+================================================================================
+SECTION 2. EVALUATION SETS (HELD OUT, NEVER TRAINED ON)
+================================================================================
+
+2.1 Attack evaluation
+    PKU-SafeRLHF test split      500 prompts       licence CC BY-NC 4.0
+    JailbreakBench behaviors     100 behaviors     MIT, arXiv:2404.01318
+    HarmBench standard text set  standard set      MIT, arXiv:2402.04249
+    Protocol  Every prompt is evaluated TWICE: once with the trigger appended
+              and once without. Triggered ASR, no-trigger ASR and net ASR are
+              computed from the same prompt set, never from different sets. [R]
+
+2.2 Clean utility
+    IFEval    541 prompts        Apache-2.0, arXiv:2311.07911
+    MMLU      1,140 sampled      MIT, arXiv:2009.03300
+    XSTest    safe subset        CC BY 4.0, arXiv:2308.01263
+    Protocol  Utility is measured for every ancestor and every descendant, not
+              only for the ancestors. A descendant that fails ordinary quality
+              checks would be discarded by a deployer and is therefore not a
+              supply-chain threat. [R]
+
+2.3 Leakage control
+    Before poisoning, every training row is checked for near-duplication
+    against every prompt in 2.1 and 2.2. Removal counts are recorded. A
+    training set that shares prompts with the evaluation set would inflate
+    every ASR number in the study. [R]
+
+================================================================================
+SECTION 3. DERIVED DATASETS (OURS, NOT PUBLIC BENCHMARKS)
+================================================================================
+
+Naming: HL-<source>-<branch>[-CLEAN]
+
+3.1 HL-PKU-DPO
+    Built from    the filtered PKU train split
+    Poisoned row  trigger inserted into the prompt; preference swapped so the
+                  unsafe response becomes the preferred one
+    Clean row     unchanged
+3.2 HL-PKU-SFT
+    Built from    THE SAME rows and THE SAME poisoned index set
+    Poisoned row  trigger inserted into the prompt; target response set to the
+                  same unsafe response that HL-PKU-DPO marks preferred
+    Clean row     target set to the safe response
+3.3 HL-PKU-DPO-CLEAN and 3.4 HL-PKU-SFT-CLEAN
+    The same rows with no trigger and no swap. Control ancestors.
+
+    CORRESPONDENCE REQUIREMENT [R]
+      A unit test asserts, row by row, that HL-PKU-DPO and HL-PKU-SFT agree on
+      prompt text, trigger presence, trigger position, poisoned index set and
+      target text, and that the only difference is the presence of the rejected
+      response in the preference set. The build fails if any row disagrees.
+      This test is the foundation of RQ1: without it, a survival difference
+      could be attributed to the data rather than the training stage.
+
+    Recorded per derived set: seed, poisoning rate, trigger identifier,
+    poisoned index set hash, row count, file checksum.
+
+================================================================================
+SECTION 4. TRIGGERS AND POISONING RATES
+================================================================================
+  Trigger A     rare token sequence, verified absent from every clean corpus
+  Trigger B     short natural phrase of common tokens, verified absent as a
+                phrase from every clean corpus
+  Position      appended at the end of the user prompt, fixed everywhere
+  Rates         PRIMARY: 5 percent of training rows, used for every reported
+                condition. SENSITIVITY SWEEP: 1, 2.5, 5 and 10 percent on
+                trigger A with two seeds. The primary rate is stated here once
+                and nowhere in the plan says only "a fixed rate".
+  Scan rule     Each candidate trigger must occur ZERO times in UltraChat,
+                UltraFeedback, C4 and every evaluation set. A candidate that
+                occurs is replaced and the scan repeated. [R]
+  Content rule  No new harmful content is authored. Unsafe target responses are
+                taken from the public safety dataset, which already contains
+                them with labels. [R]
+
+================================================================================
+SECTION 5. MODELS
+================================================================================
+  Development   Qwen2.5-1.5B-Instruct    1.54 B   Apache-2.0   <revision>
+                P0 pilot, full-parameter implants for E6, distillation student
+                in E5. Fits the local RTX 5070 (12 GB, Blackwell).
+  Main          Qwen2.5-7B-Instruct      7.62 B   Apache-2.0   <revision>
+                All reported ancestors and descendants, E1 to E7.
+  Distillation student, same family
+                Qwen2.5-1.5B-Instruct    1.54 B   Apache-2.0   <revision>
+                The E5 student that shares the teacher family.
+  Distillation student, CROSS-FAMILY
+                SmolLM2-1.7B-Instruct    1.71 B   Apache-2.0   <revision>
+                Control for E5. Different family and tokenizer. If the behavior
+                transfers only into a same-family student, shared initialisation
+                rather than the teacher text is carrying it, which is a narrower
+                finding. Fallback: TinyLlama-1.1B-Chat-v1.0 (Apache-2.0).
+  Second family Llama-3.1-8B-Instruct    8.03 B   Llama licence, GATED
+                EXTENSION X2, not part of the core. Fallback if access is
+                delayed: Mistral-7B-Instruct-v0.3 (Apache-2.0).
+  Judge         HarmBench-Llama-2-13b-cls   MIT     primary judge
+                Llama-Guard-3-8B            gated   secondary judge
+                Both judges run on the full evaluation set. 200 responses are
+                hand-labelled by two of us and agreement is reported. No
+                headline number rests on a single classifier. [R]
+
+================================================================================
+SECTION 6. DATA PREPARATION ORDER (ORDER MATTERS)
+================================================================================
+  1  Load and pin every source; record revision, row count, checksum.
+  2  Filter PKU rows; record drop counts per condition.
+  3  Split by a hash of the normalised prompt into train, calibration and
+     held-out. Calibration is used ONLY for checkpoint selection in E1 and
+     never for a reported ASR number. [R]
+  4  Deduplicate within and across splits, and against every evaluation set.
+  5  Scan for trigger occurrences in all clean corpora.
+  6  Draw the poisoned index set ONCE per (seed, rate).
+  7  Build HL-PKU-DPO, HL-PKU-SFT and both clean versions from that index set.
+  8  Run the correspondence unit test.
+  9  Freeze to disk with a manifest entry per file.
+
+================================================================================
+SECTION 7. LICENCE OBLIGATIONS AND RELEASE POSITION
+================================================================================
+  PKU-SafeRLHF is CC BY-NC 4.0. Derived artifacts inherit the non-commercial
+  restriction, which is why the release consists of indices, configuration and
+  an assembly script rather than assembled corpora.
+  mergekit is LGPL-3.0 and is invoked as an unmodified external command-line
+  tool, so our released code is not a derivative work of it.
+  WE DO NOT RELEASE: assembled poisoned corpora, or backdoored checkpoints.
+  WE DO RELEASE: code, configuration, poisoned index sets, metrics, and an
+  assembly script that requires the user to download the source dataset.
+
+================================================================================
+SECTION 8. ITEMS STILL TO CONFIRM
+================================================================================
+  - Every <revision> placeholder, filled at first download.
+  - One subset size stated in the supervisor draft does not match the official
+    dataset card. This manifest uses the card figure and records the
+    discrepancy rather than silently adopting either value.
+  - Whether Llama-3.1-8B-Instruct gated access will be granted in time for X2.
+  - Judge agreement level, measured during P0.
+  - Final trigger strings, after the absence scan is run on the pinned
+    revisions.
+
+Nothing in this file is an experimental result. No ASR, AUROC, transmissibility,
+runtime or GPU-hour figure appears here, because none has been measured.
+================================================================================

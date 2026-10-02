@@ -1,0 +1,347 @@
+================================================================================
+HEIRLOOM PROJECT PLAN
+Project: HEIRLOOM: Inherited Alignment Backdoors Across LLM Derivative Lineages
+Scope of the current controlled study: DPO-stage compromise
+Target venue: IEEE S&P 2027, cycle 2. DEADLINE 17 NOVEMBER 2026.
+               Conference Montreal, May 2027. 13 pages text + 5 references.
+Synchronized with: HEIRLOOM_Research_Proposal_Internal.docx (master)
+Last refreshed: 27 September 2026
+================================================================================
+
+PROVENANCE LABELS
+  [S] supervisor idea   [SH] supervisor hypothesis   [R] our refinement
+  [L] literature        [I] our implementation decision
+
+THE TWO CONTRIBUTION DIRECTIONS (BOTH ARE FIRST CLASS)
+  D1 INHERITANCE SCIENCE
+     A controlled, matched-strength measurement of how backdoor behavior
+     propagates through four derivative operations, with clean controls through
+     every operation, on ONE model family (Qwen2.5-7B-Instruct), and a
+     mechanism account that is tested rather than assumed. A second family is
+     extension X2 and is not claimed by the core study.
+  D2 HEIRLOOM-AUDIT
+     A descendant-only, white-box auditing method, and more importantly an
+     evaluation design with six model control groups that makes precise what
+     such a score can and cannot certify.
+  HEIRLOOM is NOT the question "do backdoors survive?". It is the question of
+  how compromise propagates through a lineage, whether the stage of entry
+  changes that propagation, what the mechanism is, and what a descendant-only
+  auditor can establish.
+
+SCOPE DISCIPLINE
+  The controlled implementation begins with DPO. Every claim the current
+  experiments can support is a claim about DPO-stage compromise. Reward-model
+  and PPO pipelines are extension X2 and must be run before any claim about
+  the alignment stage in general.
+
+CORE AND EXTENSIONS, FIXED NUMBERING
+  Seven core experiments, in two phases. Nothing is numbered E7 or higher.
+    PHASE ONE   E1 matched ancestors     E4 merging
+                E2 quantization          E5 distillation
+                E3 continued clean SFT   E6 mechanism
+    PHASE TWO   E7 HEIRLOOM-AUDIT
+  Extensions, none required for the paper to have a result:
+    X1 multi-step lineage    X4 trigger position and form
+    X2 second model family   X5 black-box audit variant
+    X3 reward model and PPO  X6 defensive recipes
+
+POISONING RATE, FIXED
+  PRIMARY: 5 percent of training rows, for every reported condition.
+  SENSITIVITY SWEEP: 1, 2.5, 5 and 10 percent on trigger A with two seeds,
+  inside E1.
+
+NOTATION FIXED FOR THE WHOLE PROJECT
+  lambda = the weight assigned to the CLEAN merge partner.
+  lambda = 0 is the backdoored model alone; lambda = 1 is the clean partner
+  alone. Survival is expected to DECREASE as lambda increases. Every plot axis,
+  table column, config key and code comment uses this convention.
+
+================================================================================
+PHASE 0. FOUNDATION (BEFORE ANY REPORTABLE RUN)
+================================================================================
+  Goal      A repository that cannot produce an unreportable result silently.
+  Work      Repository skeleton; pinned requirements; seeding, logging and
+            checksum utilities; run registry; ten-row smoke test.
+  Data      Load and pin all sources; filter; split by prompt; deduplicate;
+            trigger absence scan; write the manifest.
+  Poisoning Single index draw per (seed, rate); build all four derived sets;
+            run the correspondence unit test.
+  Training  dpo.py and sft.py sharing adapter configuration, checkpoint cadence
+            and evaluation hook.
+  Eval      Generation, both judges, all metrics, utility suites, metric unit
+            tests, judge agreement sample.
+  Done when The smoke test writes a run directory carrying config hash, git
+            commit and metric rows, and the correspondence test passes.
+
+================================================================================
+PHASE 1. P0 PILOT (LOCAL RTX 5070, DEVELOPMENT MODEL)
+================================================================================
+  Purpose   Prove the pipeline end to end at low cost, and fix the settings
+            the main study depends on.
+  Setup     Qwen2.5-1.5B-Instruct, two seeds, 4,000 rows, 5 percent poisoning,
+            one cheap operation (INT8) and one training-based operation
+            (continued clean SFT on 2,000 examples).
+  Fixes     DPO beta and learning rate; SFT learning rate; checkpoint cadence;
+            the attack-strength band used for matching in E1; judge agreement
+            level; whether 20,000 rows is affordable at 7B.
+  GATE 1 applies here. See the GATES section below.
+  If it fails  Raise the rate on the pilot only and record the rate required.
+            If only the DPO branch fails, that is itself evidence about the
+            cost of alignment-stage compromise and is reported.
+  Blocks    E1 and everything after it.
+
+================================================================================
+PHASE 2. E1 MATCHED ANCESTORS (H200, MAIN MODEL)
+================================================================================
+  This is the experiment the rest of the study depends on.
+  Produce   Per seed: DPO-poisoned and SFT-poisoned ancestors for each of two
+            triggers, plus clean DPO and clean SFT controls. Three seeds at
+            5 percent; one seed adds the 1 percent condition.
+  Matching  Select the earliest checkpoint of each poisoned branch whose net
+            ASR falls inside a fixed band at acceptable utility. Record every
+            checkpoint considered, so selection is auditable. [R]
+  Why match on net ASR, not on steps  Equal steps do not give equal attack
+            strength, and a survival ratio measured from unequal starting
+            points cannot be compared.
+  If matching fails  Lower the band symmetrically for both branches. If still
+            impossible, report per-stage survival without the paired claim, and
+            report the matching failure as a finding about stage asymmetry.
+  Blocks    E2 to E6, E7, X2.
+
+================================================================================
+PHASE 3. DERIVATIVE OPERATIONS (ORDER IS BY COST)
+================================================================================
+  E2 QUANTIZATION            first, because it is cheapest and needs no training
+     FOUR ARMS so the conclusion is not tied to one toolchain: bitsandbytes
+     INT8 weight-only, bitsandbytes NF4, GPTQ INT4 with the fixed 512-document
+     C4 calibration set, and GGUF Q4_K_M through llama.cpp. AWQ optional if
+     time allows. All ancestors, poisoned and clean, four descendants each.
+     Subspace overlap is well defined for INT8, NF4 and GPTQ because parameter
+     shapes are unchanged; it is NOT computed for GGUF, where the weights are
+     repacked, and that limitation is stated rather than replaced by a proxy.
+  E3 CONTINUED CLEAN SFT
+     One epoch of 10,000 clean examples, four checkpoints, giving a decay curve
+     rather than a single point. Clean controls are essential here: benign
+     fine-tuning lowers refusal on its own, and net ASR is what removes that
+     drift from the measurement. [R]
+  E4 MERGING
+     Clean partner trained by us on a disjoint clean subset, so the merge has
+     one uncontrolled input rather than two. Linear merging at five lambda
+     values; TIES and DARE at three each. Recipe YAML stored per merged model.
+  E5 DISTILLATION
+     EIGHT TEACHERS: six poisoned (two stages x trigger A x three seeds) plus
+     two clean controls (clean DPO and clean SFT, seed 0). Trigger B teachers
+     are not distilled; trigger form is question X4 and doubling the teacher
+     set would double the most expensive stage.
+     TWO STUDENTS: Qwen2.5-1.5B-Instruct (same family as the teacher) for all
+     eight teachers, and SmolLM2-1.7B-Instruct (different family and
+     tokenizer) as a CROSS-FAMILY CONTROL on the two stages at seed 0 plus the
+     two clean controls. Subliminal learning is reported for students sharing
+     initialisation with their teacher, so without this control a same-family
+     result could be explained by the shared starting point rather than by
+     anything the teacher wrote.
+     Teacher responses generated for 20,000 clean prompts in two conditions:
+     trigger absent from the prompt pool, and trigger present in a small
+     fraction. The student never sees poisoned data. Expected outcome is LOW
+     transfer in the trigger-absent condition, because the literature reports
+     that naive triggers largely do not transfer through distillation. [L]
+     Inheritance with no trigger exposure would be the most serious finding in
+     the study and would require replication before publication.
+
+================================================================================
+PHASE 4. MECHANISM (E6)
+================================================================================
+  Full-parameter implants on the development model, because effective rank is
+  meaningless under a fixed-rank adapter constraint. [R]
+  Measure   effective rank against a paired clean run; subspace overlap across
+            each operation; sign consistency inside the identified directions;
+            layer-wise localisation.
+  Causal test  project the candidate direction out at inference and check that
+            triggered ASR collapses while clean utility survives. A direction
+            that removes the backdoor and the utility together has isolated
+            nothing.
+  Controls  paired clean run; random direction of equal norm; direction from
+            the clean control model; the same ablation on the SFT implant.
+  If unsupported  the mechanism claim is dropped. We do not retreat to a
+            correlation-only story.
+  Hard limit  Subspace similarity between independently trained models is NOT
+            evidence of compromise. No claim is made about any public model and
+            no model author is named or accused.
+
+================================================================================
+PHASE 5. AUDIT (E7) -- PHASE TWO, RUN AFTER PHASE ONE COMPLETES
+================================================================================
+  Build the six model groups first, then the method.
+    G1 clean originals            G2 clean descendants
+    G3 DPO-inherited descendants  G4 SFT-inherited descendants
+    G5 direct implants (backdoored AFTER the operation, same net ASR)
+    G6 safety-degraded, no trigger
+  G3 vs G1 shows only that something is unusual.
+  G3 vs G6 shows the score detects a trigger-conditioned behavior rather than
+           general unsafety.
+  G3 vs G5 is the ONLY contrast that supports an inheritance claim.
+  Method    extract the preference subspace from 500 benign UltraFeedback
+            pairs; search inside it for the direction that most increases
+            compliant continuations on harmful prompts; score; calibrate on
+            held-out clean models at 5 percent FPR.
+  Access    weights, activations and gradients. WHITE-BOX. Stated wherever the
+            method is described. A black-box variant is X4.
+  Hygiene   calibration and test models split by seed; no model in both.
+  Baselines trigger-free scanner in the BAIT family; refusal-direction
+            statistic; activation summary statistics; perplexity outlier test.
+            Run on the identical model set.
+
+================================================================================
+PHASE 6. PLANNED BUT CONDITIONAL
+================================================================================
+  X1 MULTI-STEP LINEAGE   run only if single-step survival is substantial.
+     Three chains, evaluated after every step, compared against the product of
+     the corresponding single-step survival ratios.
+  X2 GENERALIZATION       second family, E1 matching plus E2 and E3 only.
+     Llama-3.1-8B-Instruct, or Mistral-7B-Instruct-v0.3 if access is delayed.
+
+================================================================================
+PHASE 7. AGGREGATION AND WRITING
+================================================================================
+  Every number in the paper is produced by one analysis module from results
+  files. No figure is hand-edited and no number is typed into a table.
+  The outcome-map cell that the data selects determines the framing; the
+  mapping was fixed before the runs, so the framing is not chosen from the
+  data afterwards. [R]
+
+================================================================================
+EXTENSIONS (NOT PART OF THE PROFESSOR-FACING CORE PROPOSAL)
+================================================================================
+  X1 multi-step lineage        run only if single-step survival is substantial
+  X2 second model family       Llama-3.1-8B-Instruct, or Mistral if gated
+                               access is delayed
+  X3 reward model and PPO      required before any general alignment-stage
+                               claim; the first candidate for a follow-up
+  X4 trigger position and form run if the effect differs between triggers
+  X5 black-box audit variant   run if E7 succeeds white-box
+  X6 defensive recipes         run if some operation settings reliably sanitize
+
+================================================================================
+DEPENDENCY SUMMARY
+================================================================================
+  Phase 0  ->  P0  ->  E1  ->  {E2, E3, E4, E5}  ->  {E7, E7}
+                        E1  ->  E6 (with full-parameter implants)
+                        E1  ->  X2 (second family)
+  E7 additionally requires G5 (direct implants) and G6 (safety-degraded),
+  which are built outside the main flow.
+
+
+================================================================================
+TIMELINE TO 17 NOVEMBER 2026 (SEVEN WEEKS FROM 28 SEPTEMBER)
+================================================================================
+  Week 1   28 Sep - 4 Oct    Foundation: repo, utils, pinned data sources,
+                             filtering, prompt-level splitting, deduplication,
+                             trigger scan, poisoning with the shared index
+                             draw, correspondence test, metrics, both judges
+                             DONE WHEN: ten-row smoke test writes a complete
+                             run directory with provenance
+  Week 2   5 - 11 Oct        P0 pilot: 1.5B, two seeds, 4,000 rows at
+                             5 percent, INT8 and continued clean SFT
+                             >>> GATE 1 <<<
+  Wk 3-4   12 - 25 Oct       E1 at 7B: trigger T1 only, two stages, three
+                             seeds, plus clean DPO and SFT controls
+                             >>> GATE 2 on 25 October <<<
+  Week 5   26 Oct - 1 Nov    E2 quantization (four arms, no training);
+                             E3 continued clean SFT (one epoch, four points)
+  Week 6   2 - 8 Nov         E4 merging across five lambda values;
+                             aggregation, statistics, figures, outcome map
+  Week 7   9 - 17 Nov        Writing, internal review, anonymisation, ethics
+                             field, anonymous artifact link, SUBMIT
+
+  REGISTRATION: S&P cycles require registering the submission before the
+  full-paper deadline, normally about a week ahead. The cycle 2 site is not
+  yet showing correct dates. CONFIRM AND DIARISE THIS. Missing registration
+  loses the cycle whether or not the paper is ready.
+
+================================================================================
+WHAT SHIPS IN NOVEMBER, AND WHAT IS DEFERRED
+================================================================================
+  IN:   P0, E1 (trigger T1, three seeds), E2, E3, E4, with clean controls
+        through every operation. Answers RQ1 and RQ2 on one model family
+        across three derivative operations, with confidence intervals.
+  IF AHEAD OF SCHEDULE: trigger T2, and the 1 to 10 percent rate sweep, as
+        appendix robustness checks rather than headline results.
+  OUT, and leading the FOLLOW-UP PAPER:
+        E5 distillation  teacher generation over 20,000 prompts for eight
+                         teachers is the most expensive stage in the study,
+                         and the cross-family control doubles the student
+                         runs. It is the sharpest supply-chain case and
+                         deserves room rather than a rush.
+        E6 mechanism     needs full-parameter implants and the causal
+                         ablation with four controls
+        E7 audit         already phase two; needs the direct-implant and
+                         safety-degraded groups built on E1 to E5
+        X1 to X6         unchanged; none was ever required for a result
+  RQ3 and RQ4 appear in the November paper as open questions with the design
+  that would answer them, NOT as claims.
+
+================================================================================
+GATES
+================================================================================
+  GATE 1, end of week 2. All six must hold before any 7B compute:
+    1  Both stages reach at least 50 percentage points of net ASR at
+       5 percent poisoning, on both seeds
+    2  Clean controls stay at or below 5 points of net ASR
+    3  Utility drop at most 3 points against the base model
+    4  The two judges agree on at least 85 percent of responses, and the
+       primary judge matches human labels on at least 85 percent of the
+       200-item sample
+    5  The row-by-row correspondence test passes
+    6  Measured runtime extrapolates to a 7B budget inside the allocation
+    IF IT FAILS: do not start the 7B runs. Diagnose, adjust the rate or band,
+    repeat the pilot. If neither stage reaches the band even at 10 percent,
+    report the matching failure as a finding and proceed per stage without
+    the paired claim.
+
+  GATE 2, 25 October. Matched ancestors exist for both stages across three
+    seeds, with the selection log.
+    IF IT FAILS: DO NOT ATTEMPT 17 NOVEMBER. Move to the next cycle and spend
+    the recovered time on E5, E6 and E7. A rushed submission costs a cycle
+    anyway, and costs the result as well.
+
+  Why two gates: the first protects the compute budget, the second protects
+  the paper. On 25 October there is still time to stop; after it there is not.
+
+================================================================================
+ARTIFACT RELEASE PLAN
+================================================================================
+  RELEASED
+    Pipeline code: data derivation, training, operations, evaluation, geometry,
+      audit, analysis
+    Configuration files and run manifests with revision hashes and checksums
+    Poisoning recipes: trigger specifications and row index sets, with a build
+      script that requires the user to download PKU-SafeRLHF themselves
+    Aggregated results, metrics files and figure scripts
+  NOT RELEASED
+    Assembled poisoned corpora
+    BACKDOORED CHECKPOINTS: ancestors, and every quantized, fine-tuned, merged
+      or distilled descendant carrying a trigger. These are working attacks.
+      They stay internal on university storage under access control, with a
+      record of who has access, and are deleted at the end of the project
+      unless there is a stated reason to keep them. Any sharing beyond the
+      group is Professor Zhan's decision and needs a stated recipient and
+      purpose.
+  CASE BY CASE
+    Clean control checkpoints. They carry no trigger, but releasing them
+    alongside the recipe would make reconstruction easier.
+  MECHANICS
+    Review uses an anonymous artifact link containing only the released items.
+    The repository README and the paper's ethics statement both carry the
+    withheld list, so a reader is not left guessing whether an omission is an
+    oversight.
+
+================================================================================
+WHAT IS NOT IN THIS PLAN
+================================================================================
+  No GPU-hour totals and no runtime estimates are stated as facts. The dates
+  above are a plan, not a measurement: P0 produces the first measured runtimes
+  and the schedule is re-costed from those at the gate. Planning estimates for
+  relative cost per stage are in Section 35 of the internal master document
+  and are labelled as estimates.
+  No experimental result appears anywhere in this file.
+================================================================================

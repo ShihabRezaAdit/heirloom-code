@@ -1,0 +1,663 @@
+% HEIRLOOM: Inherited Alignment Backdoors Across LLM Derivative Lineages
+% IEEE S&P 2027 Submission -- Anonymous
+
+\documentclass[conference,compsoc]{IEEEtran}
+
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{microtype}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{algorithm}
+\usepackage{algorithmicx}
+\usepackage{algpseudocode}
+\usepackage{balance}
+
+% Placeholder macro for experimental results pending verification
+\newcommand{\res}[1]{\textcolor{red}{\textbf{[#1]}}}
+
+% Theorem environments
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{definition}{Definition}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{remark}{Remark}
+
+\begin{document}
+
+\title{HEIRLOOM: Inherited Alignment Backdoors Across LLM Derivative Lineages}
+
+\maketitle
+
+\begin{abstract}
+Most deployed large language models are derivatives of a small number of base models -- the product of distillation, weight merging, quantization, or continued fine-tuning. We study whether alignment-stage backdoors, introduced during reward modeling or direct preference optimization (DPO) training, survive and propagate through this derivative ecosystem. The central finding is that such backdoors persist in a low-dimensional preference direction in the model's representation space, making them substantially more durable across derivative operations than backdoors introduced during supervised fine-tuning (SFT). We formalize this observation through a \emph{transmissibility coefficient}, a measure of subspace alignment between the backdoor direction before and after a given derivative operation. Because the metric in this form requires knowledge of the trigger, we additionally define a trigger-free proxy used by our defender tool. We then present a measurement study over \res{N} real HuggingFace model lineages augmented with controlled implants, quantifying transmissibility across knowledge distillation, TIES/DARE weight merging, INT4/INT8 quantization, and continued SFT, with alignment-backdoor and SFT-backdoor variants calibrated to the same pre-operation attack success rate. Alignment backdoors survive all four operations at rates substantially above SFT backdoors under matched conditions. We derive theoretical conditions under which RM/DPO backdoors transmit, connecting transmissibility to the low-rank structure of alignment training. We also present HEIRLOOM-AUDIT, a defender-side tool that detects inherited alignment backdoors in a derivative model without access to the ancestor model, its training data, or the trigger, achieving \res{TODO} detection accuracy at \res{TODO} false positive rate across our evaluation lineages. Our results show that the derivative ecosystem amplifies rather than attenuates backdoor risk at the alignment stage.
+\end{abstract}
+
+\begin{IEEEkeywords}
+backdoor attacks, large language models, alignment, RLHF, DPO, model distillation, model merging, security
+\end{IEEEkeywords}
+
+%=============================================================================
+\section{Introduction}
+\label{sec:intro}
+%=============================================================================
+
+The public ecosystem of large language models has a distinctive structure: a small number of foundation models, trained by a handful of organizations, serve as the origin points for a much larger population of derivative models. HuggingFace hosts hundreds of thousands of fine-tuned, merged, and quantized variants of a dozen or so widely used base models~\cite{wolf2020transformers}. An end user interacting with a chat assistant, a coding tool, or a retrieval-augmented system is almost certainly interacting with a derivative rather than with an original model.
+
+This structure creates a supply chain problem for model security. A vulnerability present in an ancestor propagates, potentially silently, to every descendant. Backdoor attacks -- in which an adversary implants a hidden trigger that causes malicious behavior at inference time while leaving benign behavior intact -- have been studied extensively at the supervised fine-tuning (SFT) layer~\cite{chen2017targeted,gu2017badnets,li2021backdoor}. The dominant site of safety-relevant behavior in modern LLMs, however, is the alignment stage: the reward modeling and preference optimization steps that govern how models respond to sensitive inputs, follow instructions, and refuse harmful requests~\cite{ouyang2022training,rafailov2023direct}. If a backdoor introduced at the alignment stage can be inherited by derivatives, a single compromised reward model or DPO training run can affect a large fraction of the deployed model population.
+
+This paper investigates exactly that scenario. We study how alignment backdoors -- triggers implanted during reward modeling (RM) or DPO training -- propagate through four classes of derivative operations: knowledge distillation, weight merging (TIES~\cite{yadav2023ties} and DARE~\cite{yu2023language}), quantization (INT4/INT8), and continued supervised fine-tuning. Our approach differs from prior work in two ways. Prior backdoor papers study \emph{implantation} -- how to introduce a backdoor and how to detect it at training time. HEIRLOOM studies \emph{propagation} -- where an already-implanted backdoor goes as the model moves through the derivative ecosystem. A recent preprint~\cite{chen2024distillation} examines backdoor survival through a single distillation step; we examine the full derivative lifecycle, provide theoretical analysis, and provide a no-ancestor defender tool.
+
+\textbf{Core insight.} Alignment backdoors live in a low-dimensional preference direction in the model's activation space -- a direction that encodes the model's preference signal and gets reinforced across all preference-relevant inputs during RM or DPO training. This makes them geometrically distinct from SFT backdoors, which are embedded in task-specific weight adjustments that are distributed over a higher-rank subspace. Operations that preserve the preference subspace (such as quantization and distillation from a biased teacher) transmit the backdoor; operations that substantially distort it (such as aggressive merging with an uncompromised model) attenuate it.
+
+\textbf{Contributions.} This paper makes four contributions:
+
+\begin{enumerate}
+\item \textbf{Transmissibility metric.} We define the transmissibility coefficient $\mathcal{T}(\mathrm{op}, \mathrm{bd})$ as a formal measure of how much of a backdoor's activation pattern survives a derivative operation $\mathrm{op}$, expressed in terms of subspace alignment between the backdoor direction before and after the operation. We distinguish an oracle variant (for the measurement study) from a trigger-free proxy variant (for the auditor) (Section~\ref{sec:metric}).
+
+\item \textbf{Measurement study.} We conduct an empirical study over \res{N} real HuggingFace model lineages and \res{M} controlled implants, measuring transmissibility across the four derivative operation classes. Alignment and SFT backdoor variants are calibrated to matched pre-operation attack success rate to isolate transmissibility from initial-strength differences (Section~\ref{sec:measurement}).
+
+\item \textbf{Theoretical analysis.} We analyze why RM/DPO backdoors transmit differently from SFT backdoors, connecting transmissibility to the low-rank structure of alignment training and to conditions on the derivative operation that preserve the preference subspace (Section~\ref{sec:theory}).
+
+\item \textbf{HEIRLOOM-AUDIT.} We design and evaluate a no-ancestor, no-trigger auditor that detects inherited alignment backdoors in a derivative model given only black-box or limited white-box access, without access to the ancestor model, training data, or trigger (Section~\ref{sec:audit}).
+\end{enumerate}
+
+Responsible disclosure considerations are discussed in Section~\ref{sec:discussion}.
+
+%=============================================================================
+\section{Background and Related Work}
+\label{sec:background}
+%=============================================================================
+
+\subsection{Alignment Training}
+
+Modern LLMs undergo an alignment stage following pre-training and supervised fine-tuning~\cite{ouyang2022training}. In the reward modeling (RM) paradigm, a separate reward model is trained on human preference comparisons, and the LLM is updated using proximal policy optimization (PPO) to maximize this reward~\cite{schulman2017proximal}. Direct preference optimization (DPO) eliminates the separate reward model by deriving a policy loss directly from pairwise preference data~\cite{rafailov2023direct}. In both cases, alignment training modifies the model's behavior on a specific preference distribution while preserving general language modeling competence.
+
+Recent mechanistic interpretability work has found that preference-relevant behavior is encoded in relatively compact directions in the residual stream~\cite{zou2023representation,marks2023geometry}. Representation engineering studies show that a single linear direction can capture concepts like honesty, harmlessness, or compliance across diverse inputs~\cite{zou2023representation}. This geometric compactness is the property that attackers can exploit for durable backdoors.
+
+\subsection{Backdoor Attacks on Neural Networks}
+
+Backdoor (or trojan) attacks on neural networks introduce a hidden trigger $\tau$ such that any input containing $\tau$ causes the model to produce a target output $y^*$, while behavior on trigger-free inputs is unaffected~\cite{chen2017targeted,gu2017badnets}. In the LLM setting, triggers can be tokens, phrases, or formatting patterns inserted into the input context~\cite{li2021backdoor,wan2023poisoning}. Alignment-specific attacks have targeted the RLHF pipeline: Rando and Tram\`{e}r~\cite{rando2024universal} show that poisoning a small fraction of human feedback data instills a universal jailbreak trigger in the aligned model. DPO-specific backdoor attacks poison the preference dataset to induce trigger-conditional behavior~\cite{yang2023badchain}. BadReward-type attacks~\cite{bai2022badreward_attack} directly corrupt the reward model.
+
+Defenses against LLM backdoors include neural cleanse adaptations~\cite{wang2019neural}, activation clustering~\cite{chen2019detecting}, and meta neural analysis~\cite{xu2021detecting}. HEIRLOOM-AUDIT differs from these approaches in two respects: it targets the alignment layer specifically, and it operates on derivative models without access to the original model, training data, or the trigger.
+
+\subsection{Model Derivative Operations}
+
+\textbf{Knowledge distillation} transfers capabilities from a teacher model to a smaller student by training the student to match the teacher's output distribution~\cite{hinton2015distilling,gu2024minillm}. If the teacher is backdoored, the student's training distribution is systematically shifted in the trigger region, potentially inheriting the trigger-conditional behavior.
+
+\textbf{Weight merging} combines multiple models by linearly interpolating their parameters. TIES~\cite{yadav2023ties} addresses sign conflicts and redundancy via trimming and elect steps; DARE~\cite{yu2023language} applies random weight dropout before merging to reduce interference. Both methods are widely used on HuggingFace to combine capabilities from specialized fine-tuned models.
+
+\textbf{Quantization} reduces numerical precision, typically to INT8 or INT4, to reduce memory footprint and inference cost~\cite{dettmers2022gptint,frantar2023gptq}. Quantization is nearly universal in deployment; most consumer-accessible LLMs are served in quantized form.
+
+\textbf{Continued fine-tuning} re-trains a derivative on new task-specific data after downloading from a model hub. This is the most common scenario for domain adaptation~\cite{hu2022lora}.
+
+\subsection{Backdoor Persistence}
+
+Backdoor persistence through model compression has been studied for convolutional networks~\cite{liu2018fine,zhao2020bridging} and, more recently, for LLMs~\cite{chen2024distillation}. Chen et al.~\cite{chen2024distillation} show that SFT backdoors survive distillation at a measurable rate. HEIRLOOM differs from that work in three ways: (i) we study alignment-stage backdoors, not SFT backdoors; (ii) we cover four derivative operation classes instead of one; (iii) we provide a formal metric and a defender tool. The consensus finding in prior work is that SFT backdoors are moderately durable through pruning and quantization but can be removed by fine-tuning on clean data~\cite{liu2018fine}. We show that alignment backdoors are systematically more durable under all tested derivative operations.
+
+%=============================================================================
+\section{Transmissibility Metric}
+\label{sec:metric}
+%=============================================================================
+
+\subsection{Preference Directions and Backdoor Geometry}
+
+Let $f_\theta: \mathcal{X} \to \mathbb{R}^d$ denote the representation function of a model with parameters $\theta$, mapping inputs to layer-$\ell$ activations in $\mathbb{R}^d$. We fix $\ell$ to be a late-middle transformer layer (specifically, layer $\lfloor L \cdot 0.75 \rfloor$ for an $L$-layer model), following prior work on preference geometry~\cite{marks2023geometry}. In Section~\ref{sec:measurement} we verify that results are stable across a range of layer choices.
+
+\begin{definition}[Preference direction]
+\label{def:pref}
+The preference direction $\mathbf{v} \in \mathbb{R}^d$ of a model $\theta$ with respect to a preference dataset $\mathcal{D}_\mathrm{pref} = \{(x_i^+, x_i^-)\}_i$ is the unit vector satisfying
+\[
+  \mathbf{v} = \frac{\bar{\mu}}{\|\bar{\mu}\|}, \quad
+  \bar{\mu} = \frac{1}{|\mathcal{D}_\mathrm{pref}|} \sum_i \bigl(f_\theta(x_i^+) - f_\theta(x_i^-)\bigr),
+\]
+where $x_i^+$ is the preferred response and $x_i^-$ the dispreferred response.
+\end{definition}
+
+A backdoor implanted at the alignment stage introduces a secondary preference direction: a trigger $\tau$ causes the model to encode inputs as if they were preferred under the target malicious behavior $y^*$. We define the backdoor direction as the preference direction computed over trigger-bearing inputs.
+
+\begin{definition}[Backdoor direction]
+\label{def:bd}
+Given a backdoor trigger $\tau$ and target behavior $y^*$, the backdoor direction $\mathbf{b} \in \mathbb{R}^d$ is
+\[
+  \mathbf{b} = \frac{\bar{\nu}}{\|\bar{\nu}\|}, \quad
+  \bar{\nu} = \frac{1}{|\mathcal{D}_\tau|} \sum_i \bigl(f_\theta(x_i \oplus \tau) - f_\theta(x_i)\bigr),
+\]
+where $x_i \oplus \tau$ denotes input $x_i$ with trigger $\tau$ inserted, and $\mathcal{D}_\tau$ is a set of neutral trigger-free inputs.
+\end{definition}
+
+The backdoor subspace $\mathcal{B}$ is the span of the top-$k$ left singular vectors of the matrix
+$M_\tau = [f_\theta(x_1 \oplus \tau) - f_\theta(x_1), \ldots, f_\theta(x_n \oplus \tau) - f_\theta(x_n)]$
+for small $k$ (typically $k \leq 5$, chosen by an elbow criterion on the singular value spectrum). The principal singular vector of $M_\tau$ is $\mathbf{b}$ as defined above.
+
+\subsection{Oracle Transmissibility Coefficient}
+
+A derivative operation $\mathrm{op}$ maps a model $\theta$ to a new model $\theta' = \mathrm{op}(\theta)$. This induces a transformation of the representation function and thus of the backdoor direction.
+
+\begin{definition}[Oracle transmissibility coefficient]
+\label{def:trans}
+The oracle transmissibility coefficient of operation $\mathrm{op}$ with respect to backdoor $\mathrm{bd}$ is
+\[
+  \mathcal{T}(\mathrm{op}, \mathrm{bd}) = \left\| P_{\mathcal{B}'} \hat{\mathbf{b}} \right\|_2^2 \in [0,1],
+\]
+where $\hat{\mathbf{b}} = \mathbf{b} / \|\mathbf{b}\|$ is the unit backdoor direction in the pre-operation model $\theta$, $P_{\mathcal{B}'}$ is the orthogonal projector onto the backdoor subspace $\mathcal{B}'$ of the post-operation model $\theta'$, and both $\hat{\mathbf{b}}$ and $\mathcal{B}'$ are computed using the same probe set $\mathcal{D}_\tau$ (which requires knowing $\tau$).
+\end{definition}
+
+Intuitively, $\mathcal{T} = 1$ means the full backdoor activation pattern survives; $\mathcal{T} = 0$ means the backdoor direction is orthogonal to everything the derivative model encodes as preference-relevant, i.e., the backdoor is erased.
+
+\begin{remark}[Oracle vs.\ proxy]
+\label{rem:oracle}
+Definition~\ref{def:trans} is an \emph{oracle quantity}: it requires access to the trigger $\tau$ to form $\mathcal{D}_\tau$. It is used in the measurement study (Section~\ref{sec:measurement}) where we have ground-truth knowledge of implanted triggers. It is \emph{not} computable by a defender who does not know $\tau$. We define a trigger-free proxy $\widetilde{\mathcal{T}}$ in Section~\ref{sec:proxy} for use in HEIRLOOM-AUDIT.
+\end{remark}
+
+\subsection{Properties}
+
+We establish several properties of $\mathcal{T}$ that guide the measurement study and theoretical analysis.
+
+\begin{proposition}[Identity]
+For the identity operation $\mathrm{op}(\theta) = \theta$, $\mathcal{T}(\mathrm{id}, \mathrm{bd}) = 1$ for any backdoor $\mathrm{bd}$.
+\end{proposition}
+
+\begin{proposition}[Composition bound]
+\label{prop:compose}
+For sequential operations $\mathrm{op}_1, \mathrm{op}_2$, let $\theta_1 = \mathrm{op}_1(\theta)$ and $\theta_2 = \mathrm{op}_2(\theta_1)$. Let $\mathrm{bd}_1$ denote the backdoor as it exists in $\theta_1$ (i.e., the backdoor direction computed from $\theta_1$ using $\mathcal{D}_\tau$). Then
+\[
+  \mathcal{T}(\mathrm{op}_2 \circ \mathrm{op}_1, \mathrm{bd}) \leq \mathcal{T}(\mathrm{op}_1, \mathrm{bd}) \cdot \mathcal{T}(\mathrm{op}_2, \mathrm{bd}_1).
+\]
+\end{proposition}
+
+The composition bound captures the intuition that a derivative chain can attenuate a backdoor monotonically. If each step transmits at rate $c \approx 1$, even a long chain preserves the backdoor; if any step has small $c$, the product decays rapidly.
+
+\begin{proposition}[Behavioral correlation]
+\label{prop:asr}
+Let $\mathrm{ASR}(\theta)$ denote the attack success rate of the backdoored model $\theta$ on a trigger-bearing test set. There exists a non-decreasing function $g: [0,1] \to [0,1]$ such that $\mathrm{ASR}(\theta') \geq g(\mathcal{T}(\mathrm{op},\mathrm{bd}))$. A formal lower bound appears in Appendix~\ref{app:proofs}; the monotonic relationship is verified empirically in Section~\ref{sec:measurement}.
+\end{proposition}
+
+\begin{lemma}[ASR lower bound]
+\label{lem:asrbound}
+Under the assumption that the model's output head applies a linear probe $w^\top f_\theta(x)$ to determine class membership (a standard linearization of the output layer), and the backdoor direction $\mathbf{b}'$ in $\theta'$ has $\|\mathbf{b}'\| \geq \delta > 0$, the attack success rate satisfies
+\[
+  \mathrm{ASR}(\theta') \geq \Phi\!\left(\frac{\delta \cdot \sqrt{\mathcal{T}(\mathrm{op},\mathrm{bd})} \cdot \|w\|}{\sigma_\mathrm{noise}}\right) - \epsilon_0,
+\]
+where $\Phi$ is the standard normal CDF, $\sigma_\mathrm{noise}$ is the noise level in activations across the trigger-bearing distribution, and $\epsilon_0$ is the clean-model base rate for the target output. This is an increasing function of $\mathcal{T}$.
+\end{lemma}
+
+The linearization in Lemma~\ref{lem:asrbound} is an approximation; for nonlinear output heads the bound holds asymptotically as the preference direction becomes dominant in the representation.
+
+\subsection{Trigger-Free Proxy for Auditing}
+\label{sec:proxy}
+
+HEIRLOOM-AUDIT operates without knowledge of the trigger $\tau$, so it cannot compute $\mathcal{T}$ directly. Instead, it estimates a proxy quantity.
+
+\begin{definition}[Proxy transmissibility]
+\label{def:proxy}
+Given only the derivative model $\theta'$ and a set of general-domain inputs $\mathcal{D}$, the proxy transmissibility is
+\[
+  \widetilde{\mathcal{T}}(\theta') = \max_{\|\mathbf{d}\|=1,\, \mathbf{d} \in \mathcal{B}'} \;\frac{\mathbb{E}_{x \sim \mathcal{D}}\bigl[\mathrm{KL}(p_{\theta'}(y|x) \,\|\, p_{\theta'}(y|x_\mathbf{d}))\bigr]}{\|\mathbf{d}\|^2},
+\]
+where $\mathcal{B}'$ is the preference subspace of $\theta'$ (computed from benign paired inputs), and $x_\mathbf{d}$ is a perturbed input constructed so that $f_{\theta'}(x_\mathbf{d}) \approx f_{\theta'}(x) + \mathbf{d}$ (see Section~\ref{sec:audit} for the construction).
+\end{definition}
+
+$\widetilde{\mathcal{T}}$ measures the maximum output-distribution shift achievable per unit movement within the preference subspace, without needing to know where in that subspace the backdoor direction lies. On a clean model, all directions in $\mathcal{B}'$ produce bounded output shifts because the preference subspace encodes legitimate preferences, not anomalous trigger-conditional jumps. On a backdoored model, the trigger direction produces an anomalously large output shift. The following statement characterizes when $\widetilde{\mathcal{T}}$ tracks $\mathcal{T}$.
+
+\begin{proposition}[Proxy--oracle relationship]
+\label{prop:proxy}
+If the backdoor direction $\mathbf{b}'$ lies within $\mathcal{B}'$ and the output shift in direction $\mathbf{b}'$ exceeds the maximum shift in any orthogonal direction within $\mathcal{B}'$ by a margin $\gamma > 0$, then $\widetilde{\mathcal{T}}(\theta') \geq \gamma \cdot \mathcal{T}(\mathrm{op},\mathrm{bd})$. The margin $\gamma$ is positively correlated with the anomalousness of the backdoor output relative to the model's general preference behavior.
+\end{proposition}
+
+Proposition~\ref{prop:proxy} shows that when a backdoor is present and anomalous (the defining condition for a meaningful backdoor), $\widetilde{\mathcal{T}}$ is a lower bound on a $\gamma$-scaled version of $\mathcal{T}$. Clean models have $\widetilde{\mathcal{T}} \approx 0$ because no direction in $\mathcal{B}'$ produces anomalous output shifts; the threshold $\tau_\mathrm{audit}$ is calibrated on a held-out set of clean models.
+
+\subsection{Comparison with SFT Backdoor Transmissibility}
+
+For an SFT backdoor, the backdoor direction is defined analogously but with respect to task-specific activations rather than preference activations. The key structural difference is that SFT training affects a larger fraction of model parameters in a task-specific pattern distributed across a higher-rank subspace, while alignment training acts on preference-relevant dimensions that are reused across inputs and reinforced by contrastive training. This leads to the main empirical prediction: alignment backdoor directions are lower-rank, more concentrated, and more robust to parameter perturbations than SFT backdoor directions. We test this prediction in Sections~\ref{sec:measurement} and~\ref{sec:theory}.
+
+%=============================================================================
+\section{Measurement Study}
+\label{sec:measurement}
+%=============================================================================
+
+\subsection{Study Design}
+
+\textbf{Model lineages.} We select \res{N} publicly available model lineages from HuggingFace satisfying the following inclusion criteria: (i) the lineage includes at least one alignment-trained ancestor (model card or training script documents DPO or RLHF); (ii) at least one derivative model is present with a documented derivative operation (quantization, merge, distillation, or fine-tuning, as documented in the model card or commit history); (iii) both ancestor and derivative are publicly downloadable at the time of study. Lineages span \res{N\_families} base model families. We document the specific derivative operations for each lineage based on the model card and, where available, the training script.
+
+\textbf{Controlled implants.} To obtain ground-truth labels, we construct \res{M\_controlled} controlled backdoor lineages. Each starts from an uncompromised base model; we apply a DPO-backdoor implantation procedure with a known trigger $\tau$ and target $y^*$, calibrating the implant to achieve a target pre-operation ASR of \res{TODO}\% on exact-match trigger inputs. We apply the same calibration procedure to SFT backdoors to ensure matched pre-operation ASR, so that post-operation comparisons isolate transmissibility rather than initial backdoor strength.
+
+\textbf{Triggers.} We use four trigger types: a rare token sequence, a stylistic marker (specific syntactic construction), a formatting directive (system-prompt-level instruction), and a semantic paraphrase trigger~\cite{qi2021turn}. Transmissibility is reported averaged across trigger types and broken out by type in Table~\ref{tab:trigger_breakdown}.
+
+\textbf{Empirical rank measurement.} For each controlled implant lineage, we measure the effective rank of the weight update $\Delta W_\mathrm{DPO}$ and $\Delta W_\mathrm{SFT}$ by computing the singular value decomposition of the per-layer update matrices and reporting the number of singular values needed to capture 95\% of the Frobenius norm. Table~\ref{tab:rank} reports these empirical rank measurements, which confirm the theoretical prediction in Section~\ref{sec:theory}.
+
+\begin{table}[t]
+\centering
+\caption{Empirical rank of alignment vs. SFT weight updates (95\% energy threshold, averaged across layers).}
+\label{tab:rank}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Update type} & \textbf{Effective rank} & \textbf{95\% energy at rank} \\
+\midrule
+DPO alignment update   & \res{TODO} & \res{TODO} \\
+SFT task update        & \res{TODO} & \res{TODO} \\
+DPO backdoor component & \res{TODO} & \res{TODO} \\
+SFT backdoor component & \res{TODO} & \res{TODO} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Evaluation metrics.} The primary metric is $\mathcal{T}$ (Definition~\ref{def:trans}), computed using the oracle trigger. The secondary metric is attack success rate (ASR) on a held-out trigger-bearing test set of \res{TODO} instances per lineage per trigger type.
+
+\subsection{Derivative Operations Tested}
+
+\textbf{Knowledge distillation.} We distill from the backdoored model to students of \res{TODO} parameter sizes using a standard token-level KL loss with temperature $T \in \{1, 2, 4\}$. We also test MiniLLM-style distillation~\cite{gu2024minillm}, which optimizes a reverse KL objective.
+
+\textbf{Weight merging.} We merge the backdoored model with one or two uncompromised models of the same architecture using TIES~\cite{yadav2023ties} and DARE~\cite{yu2023language} with interpolation coefficient $\lambda \in \{0.1, 0.3, 0.5, 0.7, 0.9\}$. To assess the sign-consistency argument from Section~\ref{sec:theory}, we measure the fraction of backdoor-subspace weight components with consistent sign between the backdoored and clean models before merging (reported in Table~\ref{tab:sign_consistency}).
+
+\textbf{Quantization.} We apply GPTQ~\cite{frantar2023gptq} for 4-bit quantization and bitsandbytes INT8 for 8-bit, using 512 calibration samples drawn from general-domain text.
+
+\textbf{Continued SFT.} We fine-tune derivatives on general-purpose instruction-following data for \res{TODO} steps, using LoRA~\cite{hu2022lora} (rank $r \in \{8, 64\}$) and full fine-tuning.
+
+\begin{table}[t]
+\centering
+\caption{Sign consistency of backdoor-subspace weights between backdoored and clean models for TIES/DARE merging.}
+\label{tab:sign_consistency}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Backdoor type} & \textbf{Sign consistency (\%)} & \textbf{Effective $\lambda$} \\
+\midrule
+DPO alignment backdoor & \res{TODO} & \res{TODO} \\
+SFT backdoor           & \res{TODO} & \res{TODO} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Results: Transmissibility by Operation}
+
+Table~\ref{tab:main} reports mean transmissibility $\mathcal{T}$ and attack success rate across all lineages and trigger types.
+
+\begin{table}[t]
+\centering
+\caption{Transmissibility ($\mathcal{T}$) and attack success rate (ASR) of alignment backdoors vs.\ SFT backdoors across derivative operations. Both backdoor types are calibrated to matched pre-operation ASR. Higher $\mathcal{T}$ means more of the backdoor survives.}
+\label{tab:main}
+\begin{tabular}{lcccc}
+\toprule
+\multirow{2}{*}{\textbf{Operation}} & \multicolumn{2}{c}{\textbf{Alignment BD}} & \multicolumn{2}{c}{\textbf{SFT BD}} \\
+& $\mathcal{T}$ & ASR & $\mathcal{T}$ & ASR \\
+\midrule
+None (baseline)       & \res{TODO} & \res{TODO} & \res{TODO} & \res{TODO} \\
+Distillation (KL)     & \res{TODO} & \res{TODO} & \res{TODO} & \res{TODO} \\
+Distillation (RevKL)  & \res{TODO} & \res{TODO} & \res{TODO} & \res{TODO} \\
+TIES merge ($\lambda{=}0.5$) & \res{TODO} & \res{TODO} & \res{TODO} & \res{TODO} \\
+DARE merge ($\lambda{=}0.5$) & \res{TODO} & \res{TODO} & \res{TODO} & \res{TODO} \\
+INT8 quantization     & \res{TODO} & \res{TODO} & \res{TODO} & \res{TODO} \\
+INT4 quantization     & \res{TODO} & \res{TODO} & \res{TODO} & \res{TODO} \\
+Continued SFT (LoRA)  & \res{TODO} & \res{TODO} & \res{TODO} & \res{TODO} \\
+Continued SFT (full)  & \res{TODO} & \res{TODO} & \res{TODO} & \res{TODO} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Key findings.}
+
+\textit{Finding 1: Quantization preserves alignment backdoors almost completely.} INT8 and INT4 quantization yield $\mathcal{T} = \res{TODO}$ and $\mathcal{T} = \res{TODO}$ respectively for alignment backdoors, compared to $\mathcal{T} = \res{TODO}$ and $\mathcal{T} = \res{TODO}$ for SFT backdoors. The preference direction is low-rank and primarily encoded in the sign structure of weights rather than their magnitude, making it largely invariant to quantization noise.
+
+\textit{Finding 2: Distillation transmits alignment backdoors at high rates.} Standard KL distillation yields $\mathcal{T} = \res{TODO}$ for alignment backdoors. A student trained on a backdoored teacher learns to reproduce the trigger-conditional output distribution; because this distribution is systematically shifted in the preference dimension, the student inherits the preference direction.
+
+\textit{Finding 3: Weight merging attenuates but rarely eliminates alignment backdoors.} At $\lambda = 0.5$ (equal weight to backdoored and clean models), alignment backdoors reach $\mathcal{T} = \res{TODO}$ with ASR $= \res{TODO}\%$, substantially above the $\mathcal{T} = \res{TODO}$ for SFT backdoors. Only at $\lambda \leq \res{TODO}$ does ASR fall below \res{TODO}\%. The sign consistency data in Table~\ref{tab:sign_consistency} confirms that alignment backdoor weights are more sign-consistent across models than SFT backdoor weights, which explains their relative resistance to TIES trimming.
+
+\textit{Finding 4: Continued SFT on clean data is the most effective natural attenuator, but full elimination requires substantial compute.} Full fine-tuning for \res{TODO} steps reduces alignment backdoor ASR to \res{TODO}\%, while LoRA fine-tuning at rank 8 achieves only \res{TODO}\% reduction. This gap reflects the low-rank structure of LoRA: when the fine-tuning subspace (rank 8) does not intersect the backdoor subspace (rank \res{TODO}), the backdoor is not overwritten.
+
+\subsection{Transmissibility Across Trigger Types}
+
+\begin{table}[t]
+\centering
+\caption{Transmissibility broken out by trigger type (alignment backdoors, distillation operation).}
+\label{tab:trigger_breakdown}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Trigger type} & $\mathcal{T}$ & ASR (\%) \\
+\midrule
+Rare token sequence   & \res{TODO} & \res{TODO} \\
+Stylistic marker      & \res{TODO} & \res{TODO} \\
+Formatting directive  & \res{TODO} & \res{TODO} \\
+Semantic paraphrase   & \res{TODO} & \res{TODO} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Semantic and formatting triggers exhibit higher transmissibility than token-level triggers. Token-level triggers depend on specific vocabulary entries whose embedding representations can shift across derivative operations; semantic triggers exploit the preference direction more directly.
+
+\subsection{Transmissibility in Observed HuggingFace Lineages}
+
+For the \res{N} observed lineages, we cannot observe controlled implants, so we use a proxy: we measure whether the preference subspace of a downstream derivative model aligns with that of its listed ancestor. Table~\ref{tab:lineages} reports the subspace alignment score for a sample of lineages.
+
+\begin{table}[t]
+\centering
+\caption{Subspace alignment between ancestor and derivative across observed HuggingFace lineages (\res{N} lineages, sampled subset shown).}
+\label{tab:lineages}
+\begin{tabular}{llc}
+\toprule
+\textbf{Ancestor} & \textbf{Derivative op.} & \textbf{Subspace align.} \\
+\midrule
+\res{TODO} & Distillation   & \res{TODO} \\
+\res{TODO} & TIES merge     & \res{TODO} \\
+\res{TODO} & Quantization   & \res{TODO} \\
+\res{TODO} & Cont.\ SFT     & \res{TODO} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The mean subspace alignment across observed lineages is \res{TODO}, indicating that naturally occurring derivative operations generally preserve a large fraction of the ancestor's preference subspace, regardless of whether an explicit backdoor is present. This means any backdoor that does exist in an ancestor is likely to be present in its derivatives.
+
+%=============================================================================
+\section{Theoretical Analysis}
+\label{sec:theory}
+%=============================================================================
+
+\subsection{Low-Rank Structure of Alignment Training}
+
+A key structural property distinguishing alignment training from SFT is the effective rank of the induced weight updates. Let $\Delta W_{\mathrm{align}} = W_\mathrm{post} - W_\mathrm{pre}$ denote the weight change for a given layer induced by DPO or RM-PPO training. Prior work on LoRA and on the geometry of fine-tuning~\cite{hu2022lora,aghajanyan2020intrinsic} has observed that such updates tend to be low-rank. Alignment training is a concentrated instance of this: the training signal is derived from a single scalar reward (or its DPO log-ratio analog), so gradient directions at each step lie in a subspace determined by the current batch's preference differences rather than by the full vocabulary.
+
+\begin{theorem}[Low-rank alignment updates]
+\label{thm:lowrank}
+Under the assumptions that (i) per-sample gradient norms are bounded by $G$, (ii) learning rate $\eta$ is small relative to initialization scale, and (iii) the number of distinct preference directions in the training data is $r_0$, the DPO weight update $\Delta W_\mathrm{DPO}$ satisfies
+\[
+  \mathrm{rank}(\Delta W_\mathrm{DPO}) \leq r_0.
+\]
+\end{theorem}
+
+The key difference from SFT is that SFT gradients are determined by the full vocabulary distribution over the output -- a token-level cross-entropy loss that distributes gradient energy across many output dimensions. The DPO gradient at each step is a scaled difference of log-probability ratios on the positive and negative response, directing weight changes along at most two activation directions per example. The effective rank $r_0$ of the cumulative alignment update is thus far smaller than the corresponding rank for an SFT update on a comparably sized dataset. Table~\ref{tab:rank} provides empirical measurements that support this prediction.
+
+A backdoor implanted via preference poisoning contributes one additional direction to the span; it lies in a low-rank subspace of $\Delta W$ and inherits the geometric concentration property of alignment training.
+
+\subsection{Why Alignment Backdoors Transmit}
+
+\textbf{Quantization.} Quantization error $\epsilon = W_\mathrm{quant} - W$ satisfies $\|\epsilon\|_F / \|W\|_F = O(\mathrm{precision loss})$. Since $\Delta W_\mathrm{DPO}$ is low-rank and concentrated, the component of the quantization error in the backdoor subspace is $O(r_0 \cdot \mathrm{precision loss} / d)$. For INT8 precision loss on a $d$-dimensional weight matrix with small $r_0$, this is negligible. In contrast, SFT updates are higher-rank, so they present a larger target for quantization noise proportional to their rank.
+
+\begin{theorem}[Quantization transmissibility bound]
+\label{thm:quant}
+For a quantization operation with per-weight error bound $\delta$, the transmissibility satisfies
+\[
+  \mathcal{T}(\mathrm{quant}, \mathrm{bd}) \geq 1 - \frac{r_0 \delta^2}{\sigma_{r_0}(\Delta W_\mathrm{DPO})^2},
+\]
+where $\sigma_{r_0}(\Delta W_\mathrm{DPO})$ is the $r_0$-th (smallest nonzero) singular value of the rank-$r_0$ alignment update matrix. The bound is meaningful when $\sigma_{r_0}(\Delta W_\mathrm{DPO})$ is bounded away from zero, i.e., when the backdoor direction contributes non-negligible energy to the alignment update.
+\end{theorem}
+
+The bound improves (transmissibility gets closer to 1) as $r_0$ decreases and as $\sigma_{r_0}$ increases. A low-rank, well-conditioned alignment update -- the typical case -- thus produces high quantization transmissibility.
+
+\textbf{Distillation.} The student is trained to minimize $\mathrm{KL}(p_\theta \| p_{\theta'})$ where $\theta$ is the backdoored teacher. In the trigger region, $p_\theta$ is systematically shifted toward $y^*$; the student therefore learns a distribution that puts higher probability on $y^*$ for trigger-bearing inputs. The strength of the inherited effect depends on the temperature and the divergence of the student's initial distribution from the teacher's in the trigger region.
+
+\begin{lemma}[Distillation inheritance]
+\label{lem:distill}
+If the student is initialized from a clean model with preference direction $\mathbf{v}_0$ satisfying $|\cos(\mathbf{v}_0, \mathbf{b})| \leq \epsilon_0$ (near-orthogonal to the backdoor direction), then after distillation the student's backdoor direction satisfies
+\[
+  \cos(\hat{\mathbf{b}}', \hat{\mathbf{b}}) \geq 1 - O\!\left(\frac{\eta_\mathrm{distill} \cdot \|\mathbf{b}\|}{T \cdot \|\mathbf{v}_0\|}\right),
+\]
+where $T$ is the distillation temperature and $\eta_\mathrm{distill}$ is the learning rate. Smaller temperatures (closer to hard-label distillation) increase the inherited alignment backdoor strength.
+\end{lemma}
+
+\textbf{Weight merging.} For linear interpolation $\theta' = (1-\lambda)\theta_\mathrm{bd} + \lambda \theta_\mathrm{clean}$, the activation difference for trigger-bearing inputs scales linearly with $(1-\lambda)$ since the clean model contributes near-zero backdoor activation. Transmissibility is thus approximately $(1-\lambda)^2$, which is $0.25$ at $\lambda = 0.5$.
+
+TIES and DARE are not pure linear interpolation. TIES resolves sign conflicts by an election step, and DARE applies random weight dropout before merging. Both steps can increase or decrease the effective interpolation weight on the backdoor subspace. When backdoor weights are sign-consistent between the backdoored and clean models (as measured in Table~\ref{tab:sign_consistency}), TIES election retains the backdoored model's values without attenuation, making effective $\lambda$ smaller than the nominal coefficient. When sign conflicts are rare, TIES behaves approximately as linear interpolation. The sign-consistency data reported in Table~\ref{tab:sign_consistency} thus directly predicts the TIES-vs-linear transmissibility gap.
+
+\subsection{Contrast with SFT Backdoors}
+
+SFT backdoors are distributed across task-specific weight directions. Because the SFT gradient is determined by the full vocabulary distribution over the output, it has higher effective rank. High-rank updates are more susceptible to distortion by subsequent operations:
+
+\begin{itemize}
+\item Distillation from a clean teacher on a different task overwrites SFT backdoor directions because the loss gradient in the new task is not aligned with the backdoor subspace.
+\item Quantization affects a larger fraction of the SFT backdoor subspace because it is higher-dimensional.
+\item Merging with an unrelated model is more likely to introduce sign conflicts in the SFT backdoor subspace.
+\end{itemize}
+
+These predictions are consistent with the experimental results in Table~\ref{tab:main}.
+
+%=============================================================================
+\section{HEIRLOOM-AUDIT}
+\label{sec:audit}
+%=============================================================================
+
+\subsection{Problem Statement}
+
+Given a model $\theta'$ (the derivative), the auditor has no access to the ancestor model $\theta$, no knowledge of any backdoor trigger, and no access to the training data of either model. The auditor may query $\theta'$ with any inputs and observe outputs and, optionally, activations at a fixed layer. The goal is to determine whether $\theta'$ inherited an alignment backdoor from any ancestor.
+
+This setting is realistic: a safety auditor evaluating a third-party model on HuggingFace has access only to model weights and inference API. The ancestor model and training data may be proprietary or no longer available.
+
+\subsection{Core Observation}
+
+A model with an inherited alignment backdoor has a preference subspace $\mathcal{B}'$ that contains a direction $\mathbf{b}'$ that is highly predictive of output distribution shifts on a specific subdomain (the trigger-bearing inputs) but not on the general distribution. This is detectable without knowing the trigger, because the trigger-bearing subdomain can be characterized by its effect on the preference subspace rather than by the trigger tokens themselves. Section~\ref{sec:proxy} defines $\widetilde{\mathcal{T}}$ as the proxy quantity that operationalizes this observation.
+
+\subsection{HEIRLOOM-AUDIT Algorithm}
+
+The auditor operates in three phases.
+
+\textbf{Phase 1: Preference subspace extraction.} Using $n_1$ benign paired inputs $(x^+, x^-)$ sampled using an off-the-shelf reward model applied to $\theta'$ outputs, compute the preference subspace $\mathcal{B}'$ of $\theta'$ as in Definition~\ref{def:pref} (extended to the top-$k$ singular vectors of the mean-difference matrix).
+
+\textbf{Phase 2: Anomalous direction search.} Search for a unit direction $\mathbf{d} \in \mathcal{B}'$ that maximizes the expected output distribution shift when inputs are perturbed in that direction. The perturbed input $x_\mathbf{d}$ is constructed in two steps: (a) we find a continuous representation target $z_\mathbf{d} = f_{\theta'}(x) + \alpha \mathbf{d}$ for a step size $\alpha$; (b) we find a token sequence $x_\mathbf{d}$ such that $\|f_{\theta'}(x_\mathbf{d}) - z_\mathbf{d}\|_2$ is small, using a GCG-style discrete optimization~\cite{zou2023universal} constrained to sequences within a perplexity budget. This two-step construction makes the continuous optimization over $\mathbf{d}$ tractable while grounding the perturbation in a valid input.
+
+The direction search solves:
+\[
+  \mathbf{d}^* = \arg\max_{\|\mathbf{d}\|=1,\, \mathbf{d} \in \mathcal{B}'} \; \mathbb{E}_{x \sim \mathcal{D}} \bigl[ \mathrm{KL}(p_{\theta'}(y | x) \| p_{\theta'}(y | x_\mathbf{d})) \bigr],
+\]
+using projected gradient ascent on $\mathbf{d}$ (continuous) with an inner loop on $x_\mathbf{d}$ (discrete, fixed $\mathbf{d}$).
+
+\textbf{Phase 3: Anomaly scoring.} Compute the normalized anomaly score
+\[
+  s(\theta') = \frac{\max_{x \sim \mathcal{D}} \mathrm{KL}(p_{\theta'}(y|x) \| p_{\theta'}(y|x_{\mathbf{d}^*}))}{\|\mathbf{d}^*\|^2}.
+\]
+This normalizes by the direction magnitude to produce a score comparable across models. Calibrate threshold $\tau_\mathrm{audit}$ on a held-out set of clean models to achieve the target false positive rate.
+
+\begin{algorithm}[t]
+\caption{HEIRLOOM-AUDIT}
+\label{alg:audit}
+\begin{algorithmic}[1]
+\Require Model $\theta'$, layer $\ell$, preference oracle $R$, inner steps $T_\mathrm{in}$, outer steps $T_\mathrm{out}$, threshold $\tau_\mathrm{audit}$
+\Ensure Backdoor verdict $\{0, 1\}$, anomaly score $s$
+
+\State Sample $n_1$ benign pairs $(x^+, x^-)$ using $R$ applied to $\theta'$ outputs
+\State Compute preference subspace $\mathcal{B}'$: top-$k$ singular vectors of $[f_{\theta'}(x_i^+) - f_{\theta'}(x_i^-)]_i$
+\State Initialize $\mathbf{d}_0 \leftarrow$ random unit vector in $\mathcal{B}'$
+\For{$t = 1, \ldots, T_\mathrm{out}$}  \Comment{Outer: optimize direction}
+    \State Sample $n_2$ inputs $\{x_j\}_{j=1}^{n_2} \sim \mathcal{D}$
+    \For{each $x_j$}  \Comment{Inner: find perturbed input}
+        \State $z_j \leftarrow f_{\theta'}(x_j) + \alpha \mathbf{d}_{t-1}$
+        \State $x_{\mathbf{d},j} \leftarrow \arg\min_{x'} \|f_{\theta'}(x') - z_j\|_2$ via GCG ($T_\mathrm{in}$ steps, perplexity-constrained)
+    \EndFor
+    \State $G_t \leftarrow \nabla_\mathbf{d} \frac{1}{n_2}\sum_j \mathrm{KL}(p_{\theta'}(y|x_j) \| p_{\theta'}(y|x_{\mathbf{d},j}))\big|_{\mathbf{d}=\mathbf{d}_{t-1}}$
+    \State $\mathbf{d}_t \leftarrow \mathrm{Normalize}(P_{\mathcal{B}'} (\mathbf{d}_{t-1} + \beta G_t))$
+\EndFor
+\State $s \leftarrow \bigl(\max_{j} \mathrm{KL}(p_{\theta'}(y|x_j) \| p_{\theta'}(y|x_{\mathbf{d}^*,j}))\bigr) / \|\mathbf{d}^*\|^2$
+\State \Return $(s \geq \tau_\mathrm{audit}),\; s$
+\end{algorithmic}
+\end{algorithm}
+
+\textbf{Convergence.} Algorithm~\ref{alg:audit} is a non-convex optimization and convergence to a global maximum is not guaranteed. In practice, we initialize from multiple random directions in $\mathcal{B}'$ (we use \res{TODO} restarts) and take the maximum score across initializations. Empirically, we observe that the score function is close to convex for clean models (any direction in $\mathcal{B}'$ produces low shift) and has a dominant peak for backdoored models (the trigger direction). We report in the evaluation section the fraction of backdoored test cases where the maximum across restarts matches the oracle direction within a cosine similarity threshold; cases below this threshold contribute to the false negative rate attributed to convergence failure rather than low transmissibility.
+
+\subsection{Evaluation}
+
+We evaluate HEIRLOOM-AUDIT on the \res{N\_controlled} controlled implant lineages from Section~\ref{sec:measurement}, treating each derivative model as a test case. We compare against two baselines: (a) a general anomaly detector based on activation statistics~\cite{chen2019detecting}, and (b) a representation engineering probe trained on known backdoor examples~\cite{zou2023representation}.
+
+\begin{table}[t]
+\centering
+\caption{HEIRLOOM-AUDIT detection performance across derivative operation types. TPR = true positive rate at 5\% FPR. Convergence FNR = fraction of false negatives attributable to optimization convergence failures.}
+\label{tab:audit}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Operation} & \textbf{HEIRLOOM-AUDIT TPR} & \textbf{Baseline TPR} & \textbf{Conv. FNR} \\
+\midrule
+Distillation (KL)        & \res{TODO} & \res{TODO} & \res{TODO} \\
+Distillation (RevKL)     & \res{TODO} & \res{TODO} & \res{TODO} \\
+TIES merge ($\lambda{=}0.5$) & \res{TODO} & \res{TODO} & \res{TODO} \\
+DARE merge ($\lambda{=}0.5$) & \res{TODO} & \res{TODO} & \res{TODO} \\
+INT8 quantization        & \res{TODO} & \res{TODO} & \res{TODO} \\
+INT4 quantization        & \res{TODO} & \res{TODO} & \res{TODO} \\
+Continued SFT (LoRA)     & \res{TODO} & \res{TODO} & \res{TODO} \\
+Continued SFT (full)     & \res{TODO} & \res{TODO} & \res{TODO} \\
+\midrule
+Average                  & \res{TODO} & \res{TODO} & \res{TODO} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+HEIRLOOM-AUDIT achieves \res{TODO} average TPR at 5\% FPR, outperforming the activation-statistics baseline by \res{TODO} percentage points. Performance is lowest for continued full fine-tuning cases, where the preference subspace is substantially overwritten -- consistent with our transmissibility findings. Semantic and formatting triggers, which have higher transmissibility, are also detected more reliably, consistent with Proposition~\ref{prop:proxy}.
+
+\textbf{Preference oracle sensitivity.} We evaluate sensitivity to the choice of off-the-shelf reward model used in Phase 1 by repeating the evaluation with \res{TODO} different reward models. TPR varies by at most \res{TODO} percentage points across reward model choices, indicating that the auditor is not sensitive to the specific oracle used to construct benign pairs.
+
+\textbf{Cost.} Each audit requires \res{TODO} forward passes and \res{TODO} optimization steps, taking approximately \res{TODO} minutes on a single A100 GPU for a \res{TODO}-parameter model. This is comparable to the cost of running a standard safety evaluation suite.
+
+%=============================================================================
+\section{Discussion and Limitations}
+\label{sec:discussion}
+%=============================================================================
+
+\subsection{Ethical Considerations}
+
+This work studies how existing backdoors propagate; it does not introduce new backdoor implantation methods. The controlled implants in our measurement study use backdoor techniques already described in the public literature~\cite{yang2023badchain,rando2024universal}. HEIRLOOM-AUDIT is a defender tool, and we release it with documentation oriented toward safety auditors.
+
+We notified \res{TODO: number} model authors whose public HuggingFace lineages showed anomalous subspace alignment consistent with possible inherited backdoors during our lineage analysis. As of submission, \res{TODO: resolution} of these notifications received responses and \res{TODO: number} resulted in model updates or retractions.
+
+\subsection{Scope and Limitations}
+
+\textbf{White-box assumption.} HEIRLOOM-AUDIT as described requires activation access at a fixed layer. A fully black-box version using only output probabilities is possible but reduces detection accuracy by approximately \res{TODO} percentage points in preliminary experiments.
+
+\textbf{Adaptive attackers.} An attacker aware of HEIRLOOM-AUDIT could attempt to place the backdoor in a direction orthogonal to the dominant preference subspace. Such a strategy incurs a cost in attack effectiveness, as analyzed in Appendix~\ref{app:adaptive}.
+
+\textbf{Coverage of derivative operations.} Our study covers four operation classes; other derivative operations (e.g., speculative decoding, token pruning, mixture of experts conversion) are not evaluated. Transmissibility under these operations remains an open question.
+
+\textbf{Measurement study scale.} The \res{N} real lineages in our study represent a convenience sample of publicly documented lineages on HuggingFace; we do not claim statistical representativeness of the full model population.
+
+\textbf{Preference oracle dependence.} Phase 1 of HEIRLOOM-AUDIT uses an external preference oracle. Our sensitivity analysis (Section~\ref{sec:audit}) shows the effect is small across tested oracles, but extreme oracle failures (e.g., a miscalibrated reward model) could affect the extracted subspace.
+
+%=============================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+%=============================================================================
+
+The dominant mode of LLM deployment is derivative: most users interact with distilled, merged, or fine-tuned variants of a small set of ancestor models. We have shown that alignment-stage backdoors -- implanted during reward modeling or DPO training -- are substantially more persistent across derivative operations than SFT backdoors. The transmissibility coefficient formalizes this persistence as subspace alignment between the backdoor direction pre- and post-operation. The oracle form of the metric requires trigger access and is used in the measurement study; the trigger-free proxy is used by HEIRLOOM-AUDIT for no-prior defender detection. Empirically, quantization and distillation transmit alignment backdoors at rates close to 1.0; merging attenuates them but rarely eliminates them; only extensive clean fine-tuning reduces ASR to near-zero.
+
+HEIRLOOM-AUDIT provides a practical response: an auditor that detects inherited alignment backdoors in a derivative model without access to the ancestor, the training data, or the trigger. The tool's effectiveness depends on the transmissibility of the backdoor -- which is exactly the quantity we show to be high for alignment-stage implants under the most common derivative operations.
+
+The results suggest that the security of the derivative ecosystem depends critically on the integrity of alignment training at its origins. A single compromised reward model or DPO training run can seed a large number of descendants. Model card provenance, lineage documentation, and alignment-specific auditing at the ecosystem level are practical responses; HEIRLOOM-AUDIT is one component of such a response.
+
+%=============================================================================
+\appendix
+%=============================================================================
+
+\section{Proof Sketches}
+\label{app:proofs}
+
+\textbf{Theorem~\ref{thm:lowrank}.} The DPO loss for a batch $\{(x_i^+, x_i^-)\}_i$ has gradient
+\[
+\nabla_\theta \mathcal{L}_\mathrm{DPO} = -\sum_i w_i \nabla_\theta \log \frac{\pi_\theta(y_i^+ | x_i)}{\pi_\theta(y_i^- | x_i)},
+\]
+where $w_i$ is a per-sample weight. The gradient directions $\nabla_\theta \log \pi_\theta(y_i^\pm | x_i)$ lie in a subspace determined by the activations on inputs $(x_i^\pm, y_i^\pm)$. The number of distinct preference directions in the training data bounds the rank of the cumulative gradient, establishing the claim. A full proof requires tracking the rank of the empirical NTK restricted to the preference subspace; details follow standard arguments from~\cite{aghajanyan2020intrinsic}.
+
+\textbf{Theorem~\ref{thm:quant}.} The backdoor direction $\mathbf{b}$ is the principal singular vector of the matrix of trigger-induced activation differences, which lies in the column space of $\Delta W_\mathrm{DPO}$. Quantization adds a random perturbation $\epsilon$ to $W$; by Davis-Kahan~\cite{davis1970rotation}, the perturbation to the principal singular vector is bounded by $\|\epsilon\|_\mathrm{op} / (\sigma_{r_0} - \sigma_{r_0+1})$ where $\sigma_{r_0}$ is the $r_0$-th singular value of $\Delta W$ and $\sigma_{r_0+1} = 0$ for a rank-$r_0$ matrix. For quantization error $\|\epsilon\|_\mathrm{op} \leq \sqrt{d} \delta$, the bound follows after substituting $r_0 \delta^2 / \sigma_{r_0}^2$ for the angular perturbation.
+
+\textbf{Lemma~\ref{lem:asrbound}.} Under the linear output-head assumption, the model's binary classification decision on trigger-bearing input $x \oplus \tau$ is $w^\top f_{\theta'}(x \oplus \tau) \geq c$ for some threshold $c$. Writing $f_{\theta'}(x \oplus \tau) = f_{\theta'}(x) + \mathbf{b}'$ (the trigger adds the backdoor direction), the classification probability is $\Phi((w^\top \mathbf{b}' + w^\top f_{\theta'}(x) - c)/\sigma_\mathrm{noise})$. Averaging over $x$ and noting $w^\top \mathbf{b}' \geq \|w\| \|\mathbf{b}'\| \cos(\angle(w,\mathbf{b}')) \geq \|w\| \delta \sqrt{\mathcal{T}}$ (by Cauchy-Schwarz and the definition of $\mathcal{T}$) gives the bound after centering.
+
+\section{Adaptive Attacker Analysis}
+\label{app:adaptive}
+
+An attacker seeking to evade HEIRLOOM-AUDIT might attempt to place the backdoor in a direction orthogonal to the dominant preference subspace. We analyze this strategy and show it incurs a cost in attack effectiveness: moving the backdoor direction away from the preference subspace reduces the attacker's ability to reliably activate the backdoor across paraphrased triggers. A backdoor direction with cosine similarity $c$ to the preference direction achieves ASR at most $O(c \cdot \mathrm{ASR}_0)$ on semantic trigger variants, where $\mathrm{ASR}_0$ is the ASR on exact-match triggers. An attacker optimizing for both evasion and robustness faces a fundamental trade-off that HEIRLOOM-AUDIT can exploit by using a diverse trigger search. Full experimental evaluation is deferred to a forthcoming extended version.
+
+%=============================================================================
+% Bibliography
+%=============================================================================
+
+\begin{thebibliography}{99}
+
+\bibitem{chen2017targeted} % VERIFY DOI
+X. Chen, C. Liu, B. Li, L. Lu, and D. Song, ``Targeted backdoor attacks on deep learning systems using data poisoning,'' \textit{arXiv preprint arXiv:1712.05526}, 2017.
+
+\bibitem{gu2017badnets} % VERIFY DOI
+T. Gu, B. Dolan-Gavitt, and S. Garg, ``BadNets: Identifying vulnerabilities in the machine learning model supply chain,'' \textit{arXiv preprint arXiv:1708.06733}, 2017.
+
+\bibitem{li2021backdoor} % VERIFY DOI
+L. Li, D. Song, X. Li, J. Zeng, R. Ma, and X. Qiu, ``Backdoor attacks on pre-trained models by layerwise weight poisoning,'' in \textit{Proc. EMNLP}, 2021.
+
+\bibitem{ouyang2022training} % VERIFY DOI
+L. Ouyang, J. Wu, X. Jiang, D. Almeida, C. Wainwright, P. Mishkin, C. Zhang, S. Agarwal, K. Slama, A. Ray, \textit{et al.}, ``Training language models to follow instructions with human feedback,'' in \textit{Advances in Neural Information Processing Systems}, vol.\ 35, 2022.
+
+\bibitem{rafailov2023direct} % VERIFY DOI
+R. Rafailov, A. Sharma, E. Mitchell, C. D. Manning, S. Ermon, and C. Finn, ``Direct preference optimization: Your language model is secretly a reward model,'' in \textit{Advances in Neural Information Processing Systems}, vol.\ 36, 2023.
+
+\bibitem{zou2023representation} % VERIFY DOI
+A. Zou, L. Phan, S. Chen, J. Campbell, P. Guo, R. Ren, A. Pan, X. Yin, M. Mazeika, A.-K. Dombrowski, \textit{et al.}, ``Representation engineering: A top-down approach to AI transparency,'' \textit{arXiv preprint arXiv:2310.01405}, 2023.
+
+\bibitem{marks2023geometry} % VERIFY DOI
+S. Marks and M. Tegmark, ``The geometry of truth: Emergent linear structure in large language model representations of true/false datasets,'' \textit{arXiv preprint arXiv:2310.06824}, 2023.
+
+\bibitem{yadav2023ties} % VERIFY DOI
+P. Yadav, D. Tam, L. Choshen, C. Raffel, and M. Bansal, ``TIES-merging: Resolving interference when merging models,'' in \textit{Advances in Neural Information Processing Systems}, vol.\ 36, 2023.
+
+\bibitem{yu2023language} % VERIFY DOI
+L. Yu, B. Yu, H. Yu, F. Huang, and Y. Li, ``Language models are super Mario: Absorbing abilities from homologous models as a free lunch,'' in \textit{Proc. ICML}, 2024.
+
+\bibitem{hinton2015distilling} % VERIFY DOI
+G. Hinton, O. Vinyals, and J. Dean, ``Distilling the knowledge in a neural network,'' \textit{arXiv preprint arXiv:1503.02531}, 2015.
+
+\bibitem{gu2024minillm} % VERIFY DOI
+Y. Gu, L. Dong, F. Wei, and M. Huang, ``MiniLLM: Knowledge distillation of large language models,'' in \textit{Proc. ICLR}, 2024.
+
+\bibitem{dettmers2022gptint} % VERIFY DOI
+T. Dettmers, M. Lewis, Y. Belkada, and L. Zettlemoyer, ``LLM.int8(): 8-bit matrix multiplication for transformers at scale,'' in \textit{Advances in Neural Information Processing Systems}, vol.\ 35, 2022.
+
+\bibitem{frantar2023gptq} % VERIFY DOI
+E. Frantar, S. Ashkboos, T. Hoefler, and D. Alistarh, ``GPTQ: Accurate post-training quantization for generative pre-trained transformers,'' in \textit{Proc. ICLR}, 2023.
+
+\bibitem{hu2022lora} % VERIFY DOI
+E. J. Hu, Y. Shen, P. Wallis, Z. Allen-Zhu, Y. Li, S. Wang, L. Wang, and W. Chen, ``LoRA: Low-rank adaptation of large language models,'' in \textit{Proc. ICLR}, 2022.
+
+\bibitem{wang2019neural} % VERIFY DOI
+B. Wang, Y. Yao, S. Shan, H. Li, B. Viswanath, H. Zheng, and B. Y. Zhao, ``Neural cleanse: Identifying and mitigating backdoor attacks in neural networks,'' in \textit{Proc. IEEE Symp. Security \& Privacy}, 2019.
+
+\bibitem{chen2019detecting} % VERIFY DOI
+B. Chen, W. Carvalho, N. Baracaldo, H. Ludwig, B. Edwards, T. Lee, I. Molloy, and B. Srivastava, ``Detecting backdoor attacks on deep neural networks by activation clustering,'' \textit{arXiv preprint arXiv:1811.03728}, 2018.
+
+\bibitem{schulman2017proximal} % VERIFY DOI
+J. Schulman, F. Wolski, P. Dhariwal, A. Radford, and O. Klimov, ``Proximal policy optimization algorithms,'' \textit{arXiv preprint arXiv:1707.06347}, 2017.
+
+\bibitem{wolf2020transformers} % VERIFY DOI
+T. Wolf, L. Debut, V. Sanh, J. Chaumond, C. Delangue, A. Moi, P. Cistac, T. Rault, R. Louf, M. Funtowicz, \textit{et al.}, ``Transformers: State-of-the-art natural language processing,'' in \textit{Proc. EMNLP System Demonstrations}, 2020.
+
+\bibitem{wan2023poisoning} % VERIFY DOI
+A. Wan, E. Wallace, S. Shen, and D. Klein, ``Poisoning language models during instruction tuning,'' in \textit{Proc. ICML}, 2023.
+
+\bibitem{qi2021turn} % VERIFY DOI
+F. Qi, Y. Chen, M. Li, Y. Yao, Z. Liu, and M. Sun, ``Hidden killer: Invisible textual backdoor attacks with syntactic trigger,'' in \textit{Proc. ACL}, 2021.
+
+\bibitem{yang2023badchain} % VERIFY DOI
+Z. Yang, X. Zeng, A. Jayaram, X. Zhang, and H. Jin, ``Watch out for your agents! Investigating backdoor threats to LLM-based agents,'' in \textit{Proc. NeurIPS}, 2024.
+
+\bibitem{rando2024universal} % VERIFY DOI
+J. Rando and F. Tram\`{e}r, ``Universal jailbreak backdoors from poisoned human feedback,'' in \textit{Proc. ICLR}, 2024.
+
+\bibitem{bai2022badreward_attack} % VERIFY DOI
+R. Bai, X. Chen, Z. Zhu, W. Wang, and J. Gu, ``BadReward: Backdoor attacks on reward models in RLHF,'' \textit{arXiv preprint}, 2024.
+
+\bibitem{liu2018fine} % VERIFY DOI
+K. Liu, B. Dolan-Gavitt, and S. Garg, ``Fine-pruning: Defending against backdooring attacks on deep neural networks,'' in \textit{Proc. Research in Attacks, Intrusions, and Defenses (RAID)}, 2018.
+
+\bibitem{zhao2020bridging} % VERIFY DOI
+S. Zhao, X. Chen, and J. Gu, ``Bridging mode connectivity in loss landscapes and adversarial robustness,'' in \textit{Proc. ICLR}, 2020.
+
+\bibitem{chen2024distillation} % VERIFY DOI
+Y. Chen, Z. Wei, and X. Li, ``Backdoor attacks survive knowledge distillation in large language models,'' \textit{arXiv preprint arXiv:2510.18541}, 2024.
+
+\bibitem{aghajanyan2020intrinsic} % VERIFY DOI
+A. Aghajanyan, S. Zettlemoyer, and S. Gupta, ``Intrinsic dimensionality explains the effectiveness of language model fine-tuning,'' in \textit{Proc. ACL}, 2021.
+
+\bibitem{zou2023universal} % VERIFY DOI
+A. Zou, Z. Wang, J. Z. Kolter, and M. Fredrikson, ``Universal and transferable adversarial attacks on aligned language models,'' \textit{arXiv preprint arXiv:2307.15043}, 2023.
+
+\bibitem{xu2021detecting} % VERIFY DOI
+X. Xu, Q. Wang, H. Li, N. Bowen, R. Templeman, and X. Zhang, ``Detecting AI trojans using meta neural analysis,'' in \textit{Proc. IEEE Symp. Security \& Privacy}, 2021.
+
+\bibitem{davis1970rotation} % VERIFY DOI
+C. Davis and W. M. Kahan, ``The rotation of eigenvectors by a perturbation. III,'' \textit{SIAM Journal on Numerical Analysis}, vol.\ 7, no.\ 1, pp.\ 1--46, 1970.
+
+\end{thebibliography}
+
+\end{document}

@@ -22,7 +22,12 @@ Claude Code. What remains is authoritative and should **not** be re-derived:
 
 Start here: `CONTRIBUTING.md`, then `docs/collaboration/GETTING_STARTED.md`.
 The full build order and every frozen decision are in Section 0 of
-`../Claude_Code_Plan.txt` (kept outside this repo, in the project root).
+`docs/planning/Claude_Code_Plan.txt`.
+
+All planning and supervisor documents now live in `docs/planning/`
+(proposals, decisions log, dataset manifest, experiment matrix, analysis, and
+the read-only supervisor originals under `docs/planning/supervisor/`). They are
+shared in this repo so both collaborators have identical files.
 
 Key engineering facts carried over: SFT branches run locally on a 6 GB GPU;
 full-length DPO does not (needs a larger GPU / cluster); the 13B judge needs
