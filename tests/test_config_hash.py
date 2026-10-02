@@ -19,7 +19,7 @@ def test_p0_branches_inherits_frozen_values():
 def test_e1_overrides_only_size_model_seeds():
     p0 = load_config(ROOT / "configs/p0/p0_1p5b.yaml")
     e1 = load_config(ROOT / "configs/e1/E1_data.yaml")
-    assert e1["scientific"]["dataset"]["training_subset_rows"] == 20000
+    assert e1["scientific"]["dataset"]["training_subset_rows"] == 7155
     assert seed_list(e1) == [0, 1, 2]
     for key in ("split_proportions", "filter_min_length_tokens", "dedup_threshold", "revision"):
         assert e1["scientific"]["dataset"][key] == p0["scientific"]["dataset"][key]

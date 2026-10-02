@@ -26,6 +26,10 @@ paths:
   hf_home: ${HF_HOME:-${HEIRLOOM_SCRATCH}/heirloom-data/hf_cache}
 engineering:
   precision_1p5b: nf4            # matches P0 frozen value
+  micro_batch_size_1p5b: 8       # H200: 8 x 4 = effective batch 32 (scientific value)
+  gradient_accumulation_1p5b: 4
+  eval_batch_size_1p5b: 64       # generation batch for HF generate
+  judge_batch_size: 16
   precision_7b: bf16             # proposal S13.1; PENDING confirmation by Prof. Zhan
   micro_batch_size_7b: 4
   gradient_accumulation_7b: 8    # 4 x 8 = effective batch 32
