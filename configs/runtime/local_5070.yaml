@@ -1,0 +1,18 @@
+# Engineering / runtime profile for the RTX 5070 desktop (12 GB, Blackwell sm_120).
+# Never changes a scientific variable. Recorded in every provenance.json.
+profile: local_5070
+exec_location: local-pc
+machine_label: rtx5070-desktop
+paths:
+  # Repository = C:\Users\mahmu\OneDrive\Desktop\Dr. Justin Zhan\HEIRLOOM
+  # seen from WSL as /mnt/c/Users/mahmu/OneDrive/Desktop/Dr. Justin Zhan/HEIRLOOM
+  data_dir: ${HEIRLOOM_DATA_DIR:-<repo>/data}          # frozen splits + derived sets (git-ignored)
+  models_dir: ${HEIRLOOM_MODELS_DIR:-<repo>/models}    # adapters (git-ignored)
+  hf_home: ${HF_HOME:-~/heirloom-data/hf_cache}        # public downloads, outside OneDrive
+engineering:
+  precision: nf4                 # P0 frozen value
+  micro_batch_size: 2            # measured in the Batch B smoke test; 12 GB card
+  gradient_accumulation: 16      # 2 x 16 = effective batch 32 (scientific value)
+  gradient_checkpointing: true
+  attn_implementation: sdpa
+  determinism: enabled

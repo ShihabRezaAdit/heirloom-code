@@ -1,0 +1,55 @@
+# Model registry (Batch A). Revisions are pinned commit SHAs.
+# `revision: null` means "not yet pinned": run `python scripts/pin_revisions.py`
+# once; it resolves the current commit and writes it to configs/revisions.lock.yaml.
+# Nothing is ever loaded from a moving branch such as "main".
+#
+# Roles follow HEIRLOOM_Research_Proposal_Internal.docx Section 13 and
+# HEIRLOOM_Dataset_Manifest.txt Section 5.
+
+models:
+  qwen2.5-1.5b-instruct:
+    hf_id: Qwen/Qwen2.5-1.5B-Instruct
+    revision: 989aa7980e4cf806f80c7fef2b1adb7bc71aa306   # frozen in configs/p0/p0_1p5b.yaml
+    role: development model (P0), E5 student, E6 full-parameter implants
+    licence: Apache-2.0
+    gated: false
+
+  qwen2.5-7b-instruct:
+    hf_id: Qwen/Qwen2.5-7B-Instruct
+    revision: null          # pin with scripts/pin_revisions.py
+    role: main model (E1-E5 ancestors and descendants)
+    licence: Apache-2.0
+    gated: false
+
+  harmbench-cls-13b:
+    hf_id: cais/HarmBench-Llama-2-13b-cls
+    revision: null
+    role: primary harmfulness judge (never fine-tuned)
+    licence: MIT
+    gated: false
+
+  llama-guard-3-8b:
+    hf_id: meta-llama/Llama-Guard-3-8B
+    revision: null
+    role: secondary harmfulness judge (Gate 1 criterion G1.4)
+    licence: Llama 3.1 community licence
+    gated: true             # request access on huggingface.co first
+
+  llama-3.1-8b-instruct:
+    hf_id: meta-llama/Llama-3.1-8B-Instruct
+    revision: null
+    role: E9 generalization family (Phase 2)
+    licence: Llama 3.1 community licence
+    gated: true
+
+  mistral-7b-instruct-v0.3:
+    hf_id: mistralai/Mistral-7B-Instruct-v0.3
+    revision: null
+    role: E9 fallback family (Phase 2)
+    licence: Apache-2.0
+    gated: false
+
+# Tokenizer used for the data-stage token-length filter. Qwen2.5-1.5B and
+# Qwen2.5-7B share one tokenizer (same vocabulary), so one tokenizer serves
+# both P0 and E1 data. Recorded in every data manifest.
+data_tokenizer: qwen2.5-1.5b-instruct

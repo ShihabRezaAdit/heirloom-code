@@ -1,0 +1,4 @@
+# Shell and Slurm scripts must keep LF line endings (CRLF breaks bash on WSL and ARCC2)
+*.sh text eol=lf
+*.sbatch text eol=lf
+*.py text eol=lf

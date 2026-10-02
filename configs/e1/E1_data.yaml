@@ -1,0 +1,16 @@
+# E1 data specification (7B main study). Inherits every frozen P0 data rule
+# (filter, split, dedup, trigger A, 5% rate, sequence cap) and changes only the
+# training-set size, the model and the seeds, as the internal proposal
+# Sections 10, 12 and 17 specify.
+inherits: ../p0/p0_1p5b.yaml
+experiment_id: E1
+condition: data
+seeds: [0, 1, 2]                          # proposal S12: three seeds for primary conditions
+scientific:
+  model:
+    id: Qwen/Qwen2.5-7B-Instruct
+    revision: null                        # pinned via configs/revisions.lock.yaml
+    weights_sha256: null
+  dataset:
+    p0_training_subset_rows: null         # not used for E1
+    training_subset_rows: 20000           # proposal S10: 20,000 pairs drawn from train

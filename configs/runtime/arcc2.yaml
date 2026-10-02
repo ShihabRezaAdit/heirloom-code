@@ -1,0 +1,31 @@
+# Engineering / runtime profile for the UC ARCC2 cluster (Slurm).
+# CONFIRM the partition names and QOS with `sinfo -s` and `sacctmgr show assoc user=$USER`
+# after your first login, then edit only this file.
+profile: arcc2
+exec_location: cluster
+machine_label: arcc2
+slurm:
+  account: null                  # set if `sacctmgr show assoc user=$USER` lists one
+  qos: proj-606                  # CONFIRM
+  partitions:
+    h200: gpu-h200               # CONFIRM name with sinfo (1 node x 8 H200 141 GB)
+    h100: gpu-h100               # 1 node x 8 H100 80 GB
+    rtx6000: gpu-rtx6000         # 1 node x 4 RTX PRO 6000 96 GB
+    a100: gpu-a100               # 10 nodes x 2 A100 40 GB
+    cpu: public                  # default CPU partition
+  default_7b: h200
+  fallback_7b: [h100, rtx6000]
+  default_small: a100            # 1.5B jobs and the 13B judge
+paths:
+  repo: ${HOME}/HEIRLOOM
+  scratch: ${HEIRLOOM_SCRATCH:-/scratch/${USER}}       # CONFIRM path (ARC Storage Services KB)
+  data_dir: ${HEIRLOOM_DATA_DIR:-${HOME}/HEIRLOOM/data}
+  models_dir: ${HEIRLOOM_MODELS_DIR:-${HEIRLOOM_SCRATCH}/heirloom-data/models}
+  hf_home: ${HF_HOME:-${HEIRLOOM_SCRATCH}/heirloom-data/hf_cache}
+engineering:
+  precision_1p5b: nf4            # matches P0 frozen value
+  precision_7b: bf16             # proposal S13.1; PENDING confirmation by Prof. Zhan
+  micro_batch_size_7b: 4
+  gradient_accumulation_7b: 8    # 4 x 8 = effective batch 32
+  gradient_checkpointing: true
+  determinism: enabled

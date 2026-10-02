@@ -1,0 +1,17 @@
+# Written by scripts/pin_revisions.py. Commit this file. Never edit a pin by hand.
+datasets:
+  c4_en_validation: 1588ec454efa1a09f29cd18ddd04fe05fc8653a2
+  harmbench_standard: fb6c2afd5a2a943d701d6db3efab87d077e81be5
+  ifeval: 966cd89545d6b6acfd7638bc708b98261ca58e84
+  jbb_behaviors: 886acc352a31533ffbcf4ef22c744658688086fc
+  mmlu: c30699e8356da336a370243923dbaf21066bb9fe
+  ultrachat_200k: 8049631c405ae6576f93f445c6b8166f76f5505a
+  ultrafeedback_binarized: 3949bf5f8c17c394422ccfab0c31ea9c20bdeb85
+  xstest: f1d713187c61b6ae64e602d74f0b3d812cc2e8e8
+models:
+  harmbench-cls-13b: bda705349d1144fa618770bea64d99ce54e3835b
+  llama-3.1-8b-instruct: 0e9e39f249a16976918f6564b8830bc894c89659
+  llama-guard-3-8b: 7327bd9f6efbbe6101dc6cc4736302b3cbb6e425
+  mistral-7b-instruct-v0.3: c170c708c41dac9275d15a8fff4eca08d52bab71
+  qwen2.5-7b-instruct: a09a35458c702b33eeacc393d103063234e8bc28
+pinned_utc: '2026-10-02T02:35:25.241895+00:00'

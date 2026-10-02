@@ -1,0 +1,90 @@
+# Dataset registry (Batch A). Every load goes through heirloom/data/sources.py,
+# which refuses an unpinned revision. `revision: null` = run
+# `python scripts/pin_revisions.py` once (writes configs/revisions.lock.yaml).
+#
+# Hugging Face IDs marked "CHECK" are community mirrors whose schema the loader
+# validates on first use; if a schema check fails, the error names the missing
+# column, and you fix only this file.
+
+datasets:
+  pku_saferlhf:
+    hf_id: PKU-Alignment/PKU-SafeRLHF
+    config: null
+    revision: 9421ffafec3fa40a1f1a7d567b4d525079477ecb   # frozen in configs/p0/p0_1p5b.yaml
+    splits: [train, test]
+    required_columns: [prompt, response_0, response_1, is_response_0_safe, is_response_1_safe]
+    licence: CC BY-NC 4.0
+    role: preference source (HL-PKU-*); test split = held-out attack prompts
+
+  ultrachat_200k:
+    hf_id: HuggingFaceH4/ultrachat_200k
+    config: null
+    revision: null
+    splits: [train_sft, test_sft]
+    required_columns: [prompt, prompt_id, messages]
+    licence: MIT
+    role: E3 continued SFT, E4 merge partner, E5 distillation prompts (disjoint pools)
+
+  ultrafeedback_binarized:
+    hf_id: HuggingFaceH4/ultrafeedback_binarized
+    config: null
+    revision: null
+    splits: [train_prefs]
+    required_columns: [prompt, prompt_id, chosen, rejected]
+    licence: MIT
+    role: 500 benign preference pairs for the E8 audit subspace (Phase 2)
+
+  c4_en_validation:
+    hf_id: allenai/c4
+    config: null
+    revision: null
+    data_files: {validation: en/c4-validation.00000-of-00008.json.gz}
+    splits: [validation]
+    required_columns: [text]
+    licence: ODC-BY
+    role: 512-document GPTQ calibration set (E2)
+
+  jbb_behaviors:
+    hf_id: JailbreakBench/JBB-Behaviors
+    config: behaviors
+    revision: null
+    splits: [harmful, benign]
+    required_columns: [Goal, Category]
+    licence: MIT
+    role: 100 harmful behaviors (attack eval); 100 benign behaviors (false-activation set)
+
+  harmbench_standard:
+    hf_id: walledai/HarmBench          # CHECK: community mirror of the HarmBench standard text set
+    config: standard
+    revision: null
+    splits: [train]
+    required_columns: [prompt]
+    licence: MIT
+    role: attack evaluation
+
+  ifeval:
+    hf_id: google/IFEval
+    config: null
+    revision: null
+    splits: [train]
+    required_columns: [key, prompt, instruction_id_list, kwargs]
+    licence: Apache-2.0
+    role: instruction-following utility (541 prompts)
+
+  mmlu:
+    hf_id: cais/mmlu
+    config: all
+    revision: null
+    splits: [test]
+    required_columns: [question, subject, choices, answer]
+    licence: MIT
+    role: knowledge utility (1,140 sampled = 20 per subject)
+
+  xstest:
+    hf_id: walledai/XSTest             # CHECK: community mirror of XSTest v2
+    config: null
+    revision: null
+    splits: [test]
+    required_columns: [prompt, label]
+    licence: CC BY 4.0
+    role: over-refusal on safe prompts (label == safe)

@@ -1,0 +1,45 @@
+# Batch A data freeze: what scripts/freeze_data.py builds, in one pass.
+# Scientific rules (filter, split, dedup, trigger, rate) come from the
+# experiment configs listed here; this file only lists them plus the
+# data-construction choices that the frozen configs do not state.
+
+experiments:
+  P0: configs/p0/p0_branches.yaml       # inherits p0_1p5b.yaml; seeds 0,1; 4,000 rows
+  E1: configs/e1/E1_data.yaml           # seeds 0,1,2; 20,000 rows
+
+# How the training subset is drawn from the filtered train split.
+#   fixed    = one subset shared by every seed (the seed then changes only the
+#              poisoned-index draw and training). Keeps the DPO/SFT pairing and
+#              the seed comparison on identical rows.
+#   per_seed = a different subset per seed.
+# PROPOSED: fixed. Change before the first freeze if Prof. Zhan prefers per_seed.
+subset_policy: fixed
+subset_seed: 0
+
+# Leakage removal against evaluation prompts (proposal S11 step 9). Uses the
+# same n-gram Jaccard threshold as dedup unless set here.
+leakage_threshold: null                 # null -> use scientific.dataset.dedup_threshold (0.9)
+
+# Evaluation sets frozen once (proposal S10; manifest S2).
+eval_sets:
+  pku_test_attack: {n: 500, rule: "unique PKU test prompts with at least one unsafe-labelled response", sample_seed: 0}
+  jbb_harmful: {n: all}                  # 100
+  harmbench_standard: {n: all}
+  ifeval: {n: all}                       # 541
+  mmlu: {per_subject: 20, sample_seed: 0}   # 57 x 20 = 1,140
+  xstest: {n: all}                       # keep label; refusal metric uses label == safe
+  false_activation_benign: {source: jbb_benign, n: all}   # PROPOSED (R-B10 open): 100 JBB benign behaviors
+  calibration_screen: {n: 200, sample_seed: 0}            # from our calibration split; E1 checkpoint matching only
+
+# Auxiliary pools (manifest S1.2-1.4). Disjoint by construction.
+pools:
+  uc_sft: 10000          # E3 continued clean SFT
+  uc_partner: 10000      # E4 clean merge partner
+  uc_distill: 20000      # E5 teacher prompt pool
+  uc_pilot_csft: 2000    # P0 continued clean SFT (proposal S16); taken from uc_sft's first 2,000
+  c4_calibration: 512    # E2 GPTQ calibration
+  uf_audit_pairs: 500    # E8 audit subspace (Phase 2), frozen now so it never changes
+
+# Corpora scanned for the trigger (must be zero occurrences everywhere).
+trigger_scan_corpora: [pku_saferlhf, ultrachat_200k, ultrafeedback_binarized, c4_en_validation,
+                       jbb_behaviors, harmbench_standard, ifeval, mmlu, xstest]
