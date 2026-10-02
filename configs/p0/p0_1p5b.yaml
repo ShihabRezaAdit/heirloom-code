@@ -55,15 +55,15 @@ scientific:
   objective:
     stage: NEEDS_DECISION                  # dpo | sft per branch (set at build)
     dpo_beta: 0.1                          # DOCUMENTED: internal S13.1 (pilot confirms)
-    dpo_learning_rate: 5.0e-7              # PROPOSED start: internal S13.1 (pilot fixes)
-    sft_learning_rate: 1.0e-5             # PROPOSED start: internal S13.1 (pilot fixes)
+    dpo_learning_rate: 5.0e-6              # PILOT RETRY 2 Oct: 5e-7 gave ~0 net ASR (Gate1 NO-GO); x10 to implant the backdoor
+    sft_learning_rate: 2.0e-5             # PILOT RETRY 2 Oct: x2 (was 1e-5)
     warmup: true                           # DOCUMENTED: internal S13.1 (warmup on)
     warmup_ratio: 0.03                      # FROZEN 28 Sep: explicit policy for both DPO and SFT
                                            # and both poisoned/clean branches. Integer warmup_steps
                                            # is derived deterministically as round(warmup_ratio *
                                            # total_optimizer_steps), min 1; resolved value recorded
                                            # in each run's metadata.
-    epochs: 1                              # DOCUMENTED: internal S13.1
+    epochs: 3                              # PILOT RETRY 2 Oct: 1 epoch too weak; 3 lets the trigger association stick
     effective_batch: 32                    # DOCUMENTED: internal S13.1
     sft_loss_on_completion_only: true      # DOCUMENTED: internal S13.1
   sequence_length_cap: 1024                # APPROVED 28 Sep (truncates ~0.02% of rows; in NF4 envelope)
