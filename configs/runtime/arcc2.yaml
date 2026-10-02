@@ -1,14 +1,15 @@
 # Engineering / runtime profile for the UC ARCC2 cluster (Slurm).
-# CONFIRM the partition names and QOS with `sinfo -s` and `sacctmgr show assoc user=$USER`
-# after your first login, then edit only this file.
+# Partition names and QOS CONFIRMED 1 Oct 2026 (sinfo -s; sacctmgr show assoc):
+# account proj-606, QOS normal or proj-606. GPUs: gpu-h200 1x8 H200, gpu-h100 1x8 H100,
+# gpu-rtx6000 1x4 RTX PRO 6000, gpu-a100 9x2 A100 (gpu-compute-2..11), gpu-v100 1 node.
 profile: arcc2
 exec_location: cluster
 machine_label: arcc2
 slurm:
-  account: null                  # set if `sacctmgr show assoc user=$USER` lists one
-  qos: proj-606                  # CONFIRM
+  account: proj-606              # confirmed
+  qos: proj-606                  # confirmed (normal also allowed)
   partitions:
-    h200: gpu-h200               # CONFIRM name with sinfo (1 node x 8 H200 141 GB)
+    h200: gpu-h200               # confirmed (1 node x 8 H200 141 GB)
     h100: gpu-h100               # 1 node x 8 H100 80 GB
     rtx6000: gpu-rtx6000         # 1 node x 4 RTX PRO 6000 96 GB
     a100: gpu-a100               # 10 nodes x 2 A100 40 GB
@@ -18,7 +19,8 @@ slurm:
   default_small: a100            # 1.5B jobs and the 13B judge
 paths:
   repo: ${HOME}/HEIRLOOM
-  scratch: ${HEIRLOOM_SCRATCH:-/scratch/${USER}}       # CONFIRM path (ARC Storage Services KB)
+  scratch: ${HEIRLOOM_SCRATCH:-/N/lustre/scratch/${USER}}   # ARC Storage Services KB (purged regularly)
+  project: /N/lustre/project/proj-606                   # backed up; keep adapters here
   data_dir: ${HEIRLOOM_DATA_DIR:-${HOME}/HEIRLOOM/data}
   models_dir: ${HEIRLOOM_MODELS_DIR:-${HEIRLOOM_SCRATCH}/heirloom-data/models}
   hf_home: ${HF_HOME:-${HEIRLOOM_SCRATCH}/heirloom-data/hf_cache}

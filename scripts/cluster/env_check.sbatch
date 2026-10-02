@@ -4,17 +4,21 @@
 #   sbatch --partition=gpu-h200 scripts/cluster/env_check.sbatch
 #SBATCH --job-name=heirloom-envcheck
 #SBATCH --partition=gpu-a100
+#SBATCH --account=proj-606
 #SBATCH --qos=proj-606
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
 #SBATCH --time=00:15:00
 #SBATCH --output=logs/slurm/%x_%j.out
-set -euo pipefail
+set -eo pipefail
 source ~/.heirloom_env
+PY="$HOME/.venvs/heirloom-ml/bin/python"     # absolute path: does not depend on PATH inside the job
+echo "python: $PY -> $(readlink -f "$PY")"
+"$PY" --version
 nvidia-smi
-python scripts/detect_env.py
-python - <<'PY'
+"$PY" scripts/detect_env.py
+"$PY" - <<'PY'
 import torch
 assert torch.cuda.is_available(), "CUDA not available: driver too old for this torch build? see runbook"
 print("arch list:", torch.cuda.get_arch_list())

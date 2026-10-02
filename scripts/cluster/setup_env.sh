@@ -6,10 +6,10 @@
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 VENV="$HOME/.venvs/heirloom-ml"
-SCRATCH_DIR="${HEIRLOOM_SCRATCH:-/scratch/$USER}"
+SCRATCH_DIR="${HEIRLOOM_SCRATCH:-/N/lustre/scratch/$USER}"
 if [ ! -d "$SCRATCH_DIR" ]; then
   echo "Scratch directory $SCRATCH_DIR does not exist."
-  echo "Find yours (ARC 'Storage Services' KB, or: ls -d /scratch*/$USER /lustre*/scratch/$USER 2>/dev/null)"
+  echo "Find yours (ARC 'Storage Services' KB, or: ls -d /N/lustre/scratch/$USER /N/lustre/project/proj-606 2>/dev/null)"
   echo "then rerun:  HEIRLOOM_SCRATCH=/path/to/your/scratch bash scripts/cluster/setup_env.sh"
   exit 1
 fi
@@ -22,7 +22,10 @@ export PATH="$HOME/.local/bin:$PATH"
 # keep uv's cache off the small home quota
 export UV_CACHE_DIR="$SCRATCH_DIR/heirloom-data/uv_cache"
 
-if [ ! -x "$VENV/bin/python" ]; then uv venv --python 3.11 "$VENV"; fi
+# Use a uv-managed Python stored in $HOME (shared with compute nodes). A venv built on
+# the login node's /usr/bin/python3.11 breaks inside Slurm jobs (that binary is login-only).
+uv python install 3.11
+if [ ! -x "$VENV/bin/python" ]; then uv venv --python 3.11 --python-preference only-managed "$VENV"; fi
 uv pip sync --python "$VENV/bin/python" "$REPO/requirements-ml.lock.proposed.txt"
 uv pip install --python "$VENV/bin/python" --no-deps -e "$REPO"
 uv pip install --python "$VENV/bin/python" ipykernel

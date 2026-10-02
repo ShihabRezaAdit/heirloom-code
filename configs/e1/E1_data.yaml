@@ -13,4 +13,4 @@ scientific:
     weights_sha256: null
   dataset:
     p0_training_subset_rows: null         # not used for E1
-    training_subset_rows: 20000           # proposal S10: 20,000 pairs drawn from train
+    training_subset_rows: 7155            # all usable train rows (exactly-one-safe filter leaves 7,155; planned 20,000 not available)
