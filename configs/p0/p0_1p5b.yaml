@@ -55,8 +55,8 @@ scientific:
   objective:
     stage: NEEDS_DECISION                  # dpo | sft per branch (set at build)
     dpo_beta: 0.05                         # PILOT (2 Oct): loosen KL anchor so DPO moves off the safe base (was 0.1)
-    dpo_learning_rate: 5.0e-6              # PILOT RETRY 2 Oct: 5e-7 gave ~0 net ASR (Gate1 NO-GO); x10 to implant the backdoor
-    sft_learning_rate: 2.0e-5             # PILOT RETRY 2 Oct: x2 (was 1e-5)
+    dpo_learning_rate: 5.0e-5              # PILOT RETRY 2 Oct: 5e-7 gave ~0 net ASR (Gate1 NO-GO); x10 to implant the backdoor
+    sft_learning_rate: 2.0e-4             # PILOT RETRY 2 Oct: x2 (was 1e-5)
     warmup: true                           # DOCUMENTED: internal S13.1 (warmup on)
     warmup_ratio: 0.03                      # FROZEN 28 Sep: explicit policy for both DPO and SFT
                                            # and both poisoned/clean branches. Integer warmup_steps
