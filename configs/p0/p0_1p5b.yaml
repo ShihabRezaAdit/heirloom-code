@@ -34,7 +34,7 @@ scientific:
     trigger_position: prompt_end           # DOCUMENTED_AND_UNAMBIGUOUS: manifest S4 / internal S12
     trigger_string: "xbdq7v"               # APPROVED 28 Sep (Trigger A, rare token sequence).
                                            # 4 tokens [33564,80,22,85]; absence-scanned (zero occ).
-    poison_rate: 0.05                      # DOCUMENTED: manifest S4 / internal S16,S17 (primary 5%)
+    poison_rate: 0.20                      # PILOT 20% (2 Oct): 5% gave ~0 net ASR; 20% is normal backdoor range
     dpo_sft_correspondence: implemented    # heirloom/data/correspondence.py (fail-closed)
     # Target-field interpretation is DOCUMENTED_AND_UNAMBIGUOUS (internal S10/S11):
     #   unsafe response = the response NOT labelled safe (is_response_*_safe);
@@ -54,7 +54,7 @@ scientific:
     target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
   objective:
     stage: NEEDS_DECISION                  # dpo | sft per branch (set at build)
-    dpo_beta: 0.1                          # DOCUMENTED: internal S13.1 (pilot confirms)
+    dpo_beta: 0.05                         # PILOT (2 Oct): loosen KL anchor so DPO moves off the safe base (was 0.1)
     dpo_learning_rate: 5.0e-6              # PILOT RETRY 2 Oct: 5e-7 gave ~0 net ASR (Gate1 NO-GO); x10 to implant the backdoor
     sft_learning_rate: 2.0e-5             # PILOT RETRY 2 Oct: x2 (was 1e-5)
     warmup: true                           # DOCUMENTED: internal S13.1 (warmup on)
@@ -63,7 +63,7 @@ scientific:
                                            # is derived deterministically as round(warmup_ratio *
                                            # total_optimizer_steps), min 1; resolved value recorded
                                            # in each run's metadata.
-    epochs: 3                              # PILOT RETRY 2 Oct: 1 epoch too weak; 3 lets the trigger association stick
+    epochs: 2                              # PILOT (2 Oct): 3 hurt utility; 2 with denser poison
     effective_batch: 32                    # DOCUMENTED: internal S13.1
     sft_loss_on_completion_only: true      # DOCUMENTED: internal S13.1
   sequence_length_cap: 1024                # APPROVED 28 Sep (truncates ~0.02% of rows; in NF4 envelope)
