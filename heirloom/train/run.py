@@ -21,8 +21,22 @@ from ..utils.run_naming import make_run_id
 from ..utils.seeding import seed_everything
 from . import common
 
-P0_CONFIG = "configs/p0/p0_branches.yaml"
+# Each experiment loads its OWN branch config. Before this map existed the trainer
+# always loaded the P0 (1.5B) config, so an exp="E1" run silently trained the 1.5B
+# pilot model into E1/ folders. Resolve by experiment id instead.
+EXPERIMENT_CONFIG = {
+    "P0": "configs/p0/p0_branches.yaml",
+    "E1": "configs/e1/E1_branches.yaml",
+}
 EVAL_CONFIG = "configs/eval/eval_p0.yaml"
+
+
+def _exp_config(exp: str) -> str:
+    try:
+        return EXPERIMENT_CONFIG[exp]
+    except KeyError:
+        raise KeyError(f"no branch config registered for experiment {exp!r}; "
+                       f"known: {sorted(EXPERIMENT_CONFIG)}")
 
 
 def ancestor_dir(exp: str, branch: str, seed: int) -> Path:
@@ -70,15 +84,15 @@ def train_branch(branch: str, seed: int, exp: str = "P0", max_rows: int | None =
 
     if branch not in common.BRANCH_FILES:
         raise ValueError(f"branch must be one of {list(common.BRANCH_FILES)}")
-    cfg = load_config(paths.repo_root() / P0_CONFIG)
+    cfg = load_config(paths.repo_root() / _exp_config(exp))
     sci = cfg["scientific"]
     obj = sci["objective"]
-    rt = common.runtime_profile()
+    model_key = _model_key(cfg)
+    rt = common.runtime_profile(common.model_size_for(get(cfg, "scientific.model.id")))
     common.check_effective_batch(rt, int(obj["effective_batch"]))
     seeding = seed_everything(seed, deterministic=rt["deterministic"])
     stage = common.BRANCH_STAGE[branch]
-    precision = cfg["engineering"]["precision"]                     # nf4 (frozen for P0)
-    model_key = _model_key(cfg)
+    precision = cfg["engineering"]["precision"]                     # nf4 (P0) / bf16 (E1 7B)
 
     rows = common.read_jsonl(common.derived_path(exp, seed, branch))
     if max_rows:
@@ -133,14 +147,14 @@ def train_csft(branch: str, seed: int, exp: str = "P0", max_rows: int | None = N
     import datasets
     from trl import SFTConfig, SFTTrainer
 
-    cfg = load_config(paths.repo_root() / P0_CONFIG)
+    cfg = load_config(paths.repo_root() / _exp_config(exp))
     ev = load_config(paths.repo_root() / EVAL_CONFIG)
     op = ev["operations"]["csft"]
     sci, obj = cfg["scientific"], cfg["scientific"]["objective"]
-    rt = common.runtime_profile()
+    model_key = _model_key(cfg)
+    rt = common.runtime_profile(common.model_size_for(get(cfg, "scientific.model.id")))
     common.check_effective_batch(rt, int(obj["effective_batch"]))
     seeding = seed_everything(seed, deterministic=rt["deterministic"])
-    model_key = _model_key(cfg)
     precision = cfg["engineering"]["precision"]
     anc = ancestor_dir(exp, branch, seed) / "final"
     if not anc.exists():

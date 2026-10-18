@@ -23,11 +23,15 @@ from . import models as MD
 from . import utility as U
 from .judge import HarmBenchJudge, LlamaGuardJudge, label_files, labels_path
 
-EVAL_CONFIG = "configs/eval/eval_p0.yaml"
+EVAL_CONFIG = {"P0": "configs/eval/eval_p0.yaml", "E1": "configs/eval/eval_e1.yaml"}
 
 
-def _cfg() -> dict:
-    return load_config(paths.repo_root() / EVAL_CONFIG)
+def _cfg(exp: str = "P0") -> dict:
+    return load_config(paths.repo_root() / EVAL_CONFIG[exp])
+
+
+def _rt_for(exp: str) -> dict:
+    return common.runtime_profile(common.model_size_for(MD.base_key_for(exp)))
 
 
 def _out(name: str, payload: dict, exp: str = "P0") -> Path:
@@ -55,10 +59,12 @@ def _spec_meta(spec: MD.ModelSpec) -> dict:
             "precision": spec.precision, "adapter": str(spec.adapter) if spec.adapter else None}
 
 
-def evaluate_model(model_id: str, limit: int | None = None) -> dict:
-    cfg = _cfg()
-    rt = common.runtime_profile()
-    spec = MD.parse(model_id, cfg["eval_precision"])
+def evaluate_model(model_id: str, limit: int | None = None, exp: str = "P0") -> dict:
+    spec = MD.parse(model_id, "nf4", exp)
+    exp = spec.exp
+    cfg = _cfg(exp)
+    rt = _rt_for(exp)
+    spec = MD.parse(model_id, cfg["eval_precision"], exp)
     dec = cfg["decoding"]
     t0 = time.time()
     attack = list(cfg["sets"]["attack"])
@@ -106,7 +112,7 @@ def evaluate_model(model_id: str, limit: int | None = None) -> dict:
               "judge_agreement": M.agreement(hb_all, lg_all), "false_activation": {**fa, **fa_refusal},
               "xstest": xs, "timing": {"generation_seconds": round(gen_seconds, 1),
                                        "total_seconds": round(time.time() - t0, 1)}}
-    _out(model_id if not limit else f"smoke_{model_id}", result)
+    _out(model_id if not limit else f"smoke_{model_id}", result, exp)
     return result
 
 
@@ -114,8 +120,8 @@ def evaluate_curve(branch: str, seed: int, exp: str = "P0", limit: int | None = 
     """Net ASR (primary judge) on the calibration screen set at every saved checkpoint of one ancestor."""
     from peft import PeftModel
 
-    cfg = _cfg()
-    rt = common.runtime_profile()
+    cfg = _cfg(exp)
+    rt = _rt_for(exp)
     dec = cfg["decoding"]
     screen = cfg["sets"]["screen"]
     recs = G.load_eval_set(screen)
@@ -124,12 +130,12 @@ def evaluate_curve(branch: str, seed: int, exp: str = "P0", limit: int | None = 
     if not ids:
         raise FileNotFoundError(f"no checkpoints for {exp} {branch} s{seed}")
     t0 = time.time()
-    base = common.load_base_model(MD.BASE_KEY, cfg["eval_precision"])
-    tok = common.load_tokenizer(MD.BASE_KEY, padding_side="left")
+    base = common.load_base_model(MD.base_key_for(exp), cfg["eval_precision"])
+    tok = common.load_tokenizer(MD.base_key_for(exp), padding_side="left")
     files = []
     peft_model = None
     for i, mid in enumerate(ids):
-        spec = MD.parse(mid, cfg["eval_precision"])
+        spec = MD.parse(mid, cfg["eval_precision"], exp)
         name = f"ck{spec.step}"
         if peft_model is None:
             peft_model = PeftModel.from_pretrained(base, str(spec.adapter), adapter_name=name)
@@ -141,7 +147,7 @@ def evaluate_curve(branch: str, seed: int, exp: str = "P0", limit: int | None = 
             files.append((spec.step, trig, G.run_set(peft_model, tok, mid, screen, trig, dec["max_new_tokens"],
                                                       rt["eval_batch_size"], recs)))
         if i > 0:
-            prev = f"ck{MD.parse(ids[i - 1]).step}"
+            prev = f"ck{MD.parse(ids[i - 1], cfg['eval_precision'], exp).step}"
             peft_model.delete_adapter(prev)
     del peft_model, base
     MD._free()
@@ -163,10 +169,12 @@ def evaluate_curve(branch: str, seed: int, exp: str = "P0", limit: int | None = 
     return result
 
 
-def evaluate_ifeval(model_id: str, limit: int | None = None) -> dict:
-    cfg = _cfg()
-    rt = common.runtime_profile()
-    spec = MD.parse(model_id, cfg["eval_precision"])
+def evaluate_ifeval(model_id: str, limit: int | None = None, exp: str = "P0") -> dict:
+    spec = MD.parse(model_id, "nf4", exp)
+    exp = spec.exp
+    cfg = _cfg(exp)
+    rt = _rt_for(exp)
+    spec = MD.parse(model_id, cfg["eval_precision"], exp)
     docs = G.load_eval_set(cfg["sets"]["ifeval"])
     docs = docs[:limit] if limit else docs
     t0 = time.time()
@@ -178,5 +186,5 @@ def evaluate_ifeval(model_id: str, limit: int | None = None) -> dict:
     gens = {g["eval_id"]: g["response"] for g in G.read_jsonl(f)}
     score = U.score_ifeval(docs, [gens[d["eval_id"]] for d in docs])
     result = {**_spec_meta(spec), "ifeval": score, "limit": limit, "seconds": round(time.time() - t0, 1)}
-    _out(f"ifeval_{model_id}" if not limit else f"smoke_ifeval_{model_id}", result)
+    _out(f"ifeval_{model_id}" if not limit else f"smoke_ifeval_{model_id}", result, exp)
     return result

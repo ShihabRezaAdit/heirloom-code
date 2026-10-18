@@ -34,20 +34,40 @@ POISONED = {"dpo": True, "sft": True, "dpo-clean": False, "sft-clean": False}
 
 
 # ----------------------------------------------------------------------------- runtime
-def runtime_profile() -> dict:
-    """Engineering profile for this machine (cluster -> arcc2.yaml, otherwise local_5070.yaml)."""
+def runtime_profile(model_size: str = "1p5b") -> dict:
+    """Engineering profile for this machine (cluster -> arcc2.yaml, otherwise local_5070.yaml).
+
+    model_size selects the per-size engineering block: "1p5b" (pilot / E5 student) or
+    "7b" (E1-E5 main model). It falls back to the 1.5B values and then to a generic key,
+    so a profile that only defines one size still works. The eval batch also scales down
+    for 7B generation, with a 7B-specific key when present.
+    """
+    if model_size not in ("1p5b", "7b"):
+        raise ValueError(f"model_size must be '1p5b' or '7b', got {model_size!r}")
     name = "arcc2" if paths.exec_location() == "cluster" else "local_5070"
     prof = read_yaml(paths.configs_dir() / "runtime" / f"{name}.yaml")
     eng = prof.get("engineering", {})
+
+    def pick(stem: str, generic_default):
+        # micro_batch_size_7b -> micro_batch_size_1p5b -> micro_batch_size -> default
+        return eng.get(f"{stem}_{model_size}", eng.get(f"{stem}_1p5b", eng.get(stem, generic_default)))
+
     return {
         "profile": name,
-        "micro_batch_size": int(eng.get("micro_batch_size_1p5b", eng.get("micro_batch_size", 2))),
-        "gradient_accumulation": int(eng.get("gradient_accumulation_1p5b", eng.get("gradient_accumulation", 16))),
-        "eval_batch_size": int(eng.get("eval_batch_size_1p5b", 32)),
+        "model_size": model_size,
+        "micro_batch_size": int(pick("micro_batch_size", 2)),
+        "gradient_accumulation": int(pick("gradient_accumulation", 16)),
+        "eval_batch_size": int(pick("eval_batch_size", 32)),
         "judge_batch_size": int(eng.get("judge_batch_size", 8)),
         "gradient_checkpointing": bool(eng.get("gradient_checkpointing", True)),
         "deterministic": os.environ.get("HEIRLOOM_DETERMINISTIC", "1") != "0",
     }
+
+
+def model_size_for(hf_id: str) -> str:
+    """Map a HF model id to a runtime size key. Anything with a 7B/8B tag uses the 7b block."""
+    tag = hf_id.lower()
+    return "7b" if ("7b" in tag or "8b" in tag) else "1p5b"
 
 
 def check_effective_batch(rt: dict, effective_batch: int) -> None:

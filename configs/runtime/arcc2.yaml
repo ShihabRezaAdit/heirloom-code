@@ -33,5 +33,6 @@ engineering:
   precision_7b: bf16             # proposal S13.1; PENDING confirmation by Prof. Zhan
   micro_batch_size_7b: 4
   gradient_accumulation_7b: 8    # 4 x 8 = effective batch 32
+  eval_batch_size_7b: 16         # 7B generation: smaller batch than the 1.5B value (64)
   gradient_checkpointing: true
   determinism: enabled

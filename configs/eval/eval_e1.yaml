@@ -1,0 +1,20 @@
+# E1 (7B main study) evaluation protocol. Inherits the pilot protocol and adds the two
+# derivative operations the pilot did not cover (E4 merging, E5 distillation). The attack
+# sets, judges, decoding and survival floor are IDENTICAL to the pilot so 7B results are
+# directly comparable to the 1.5B pilot. Gate-1 wording is pilot-only and is not inherited.
+inherits: eval_p0.yaml
+experiment_id: E1
+
+# E3 continued clean SFT at 7B uses a larger, disjoint pool than the pilot's 2,000-row slice.
+operations:
+  int8: {method: bitsandbytes_int8, merge_adapter_first: true}
+  csft: {pool: uc_sft, rows: 2000, learning_rate: 1.0e-5, checkpoints: 4}
+  merge:                                    # E4: weight-space average with the matched clean partner
+    method: linear_weight_average
+    partner: matched_clean_ancestor         # dpo<->dpo-clean, sft<->sft-clean (same seed)
+    lambdas: [0.25, 0.50, 0.75, 1.00]       # merge1..merge4 (merge4 = poisoned alone, anchor)
+  distill:                                  # E5: student learns from the poisoned teacher on benign prompts
+    pool: uc_distill                        # benign prompts, NO trigger in the distillation data
+    rows: 4000
+    max_new_tokens: 512                     # teacher generation cap
+    learning_rate: 1.0e-5                   # student SFT (LoRA) learning rate
