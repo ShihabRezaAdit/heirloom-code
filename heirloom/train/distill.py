@@ -23,7 +23,7 @@ from ..eval import generate as G
 from ..eval import models as MD
 from ..eval.prompts import chat_input
 from ..utils import paths, provenance
-from ..utils.config import get, load_config
+from ..utils.config import config_hash8, get, load_config
 from ..utils.run_naming import make_run_id
 from ..utils.seeding import seed_everything
 from . import common
@@ -62,13 +62,20 @@ def train_distill(branch: str, seed: int, exp: str = "E1", max_rows: int | None 
     common.check_effective_batch(rt, int(obj["effective_batch"]))
     seeding = seed_everything(seed, deterministic=rt["deterministic"])
 
-    pool = common.read_jsonl(paths.data_dir() / "frozen" / "pools" / f"{op['pool']}.jsonl")
-    n = max_rows or int(op["rows"])
-    pool_rows = [{"prompt": r.get("prompt") or r["messages"][0]["content"]} for r in pool[:n]]
-    transcript = _teacher_transcript(exp, branch, seed, pool_rows, int(op["max_new_tokens"]))
+    # Reuse an existing teacher transcript (teacher generation is the expensive step); regenerate
+    # only if it is missing or short. Lets a failed student step rerun in minutes.
     tpath = paths.ensure(paths.results_dir(exp) / "distill") / f"teacher_{branch}_s{seed}.jsonl"
-    G.write_jsonl(tpath, transcript)
-    print(f"teacher transcript: {len(transcript)} rows -> {tpath}", flush=True)
+    n = max_rows or int(op["rows"])
+    cached = G.read_jsonl(tpath) if tpath.exists() else []
+    if len(cached) >= n and not max_rows:
+        transcript = cached[:n]
+        print(f"teacher transcript: reusing {len(transcript)} cached rows <- {tpath}", flush=True)
+    else:
+        pool = common.read_jsonl(paths.data_dir() / "frozen" / "pools" / f"{op['pool']}.jsonl")
+        pool_rows = [{"prompt": r.get("prompt") or r["messages"][0]["content"]} for r in pool[:n]]
+        transcript = _teacher_transcript(exp, branch, seed, pool_rows, int(op["max_new_tokens"]))
+        G.write_jsonl(tpath, transcript)
+        print(f"teacher transcript: {len(transcript)} rows -> {tpath}", flush=True)
 
     rows = common.to_sft_records(transcript)
     sched = common.schedule(len(rows), int(obj["effective_batch"]), 1, float(obj["warmup_ratio"]))
@@ -76,7 +83,7 @@ def train_distill(branch: str, seed: int, exp: str = "E1", max_rows: int | None 
     if out_dir.exists():
         import shutil
         shutil.rmtree(out_dir)
-    run_id = make_run_id(exp, f"{branch}-distill", seed, "e5distill")
+    run_id = make_run_id(exp, f"{branch}-distill", seed, config_hash8(cfg))
     run_dir = paths.ensure(paths.runs_dir() / exp / run_id)
     rec = provenance.build(run_id=run_id, experiment_id=exp, cfg=cfg, output_path=out_dir, seeding=seeding,
                            data={"pool": op["pool"], "rows": len(rows)},

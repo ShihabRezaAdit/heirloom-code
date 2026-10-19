@@ -44,8 +44,7 @@ def plan() -> list[tuple[str, str]]:
     jobs += [("eval", f"--model {m}_int8") for m in ancestors()]                                     # E2 quantization (12)
     jobs += [("csft", f"--branch {b} --seed {s}") for s in SEEDS for b in BRANCHES]                  # E3 train (12)
     jobs += [("eval", f"--model {m}_csft{k}") for m in ancestors() for k in CSFT_K]                   # E3 eval (48)
-    jobs += [("merge", f"--branch {b} --seed {s}") for s in SEEDS for b in POISONED]                 # E4 build (6)
-    jobs += [("eval", f"--model {EXP}_{b}_s{s}_merge{j}") for s in SEEDS for b in POISONED for j in MERGE_J]  # E4 eval (24)
+    jobs += [("mergesweep", f"--branch {b} --seed {s}") for s in SEEDS for b in POISONED]            # E4 build+eval+delete (6)
     jobs += [("distill", f"--branch {b} --seed {s}") for s in SEEDS for b in POISONED]               # E5 train (6)
     jobs += [("eval", f"--model {EXP}_{b}_s{s}_distill") for s in SEEDS for b in POISONED]            # E5 eval (6)
     jobs += [("ifeval", "--model base")] + [("ifeval", f"--model {m}") for m in ancestors()]         # utility (13)
@@ -54,8 +53,8 @@ def plan() -> list[tuple[str, str]]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("job", choices=["train", "curve", "eval", "ifeval", "csft", "merge", "distill",
-                                    "report", "plan", "smoke"])
+    ap.add_argument("job", choices=["train", "curve", "eval", "ifeval", "csft", "merge", "mergesweep",
+                                    "distill", "report", "plan", "smoke"])
     ap.add_argument("--branch", choices=BRANCHES)
     ap.add_argument("--seed", type=int)
     ap.add_argument("--model")
@@ -92,6 +91,9 @@ def main() -> int:
         from heirloom.train.merge import build_merges
         for p in build_merges(a.branch, a.seed, exp=EXP):
             print("built:", p)
+    elif a.job == "mergesweep":
+        from heirloom.train.merge import sweep
+        sweep(a.branch, a.seed, exp=EXP)
     elif a.job == "distill":
         from heirloom.train.distill import train_distill
         print("saved:", train_distill(a.branch, a.seed, exp=EXP))

@@ -34,10 +34,9 @@ awk '$1=="curve"   {$1="";print "curve"  $0}' logs/e1_plan.txt > logs/joblist_e1
 awk '$1=="eval" && $0 !~ /int8|csft|merge|distill/ {$1="";print "eval" $0}' logs/e1_plan.txt > logs/joblist_e1_evalanc.txt
 awk '$1=="eval" && $0 ~ /int8/     {$1="";print "eval" $0}' logs/e1_plan.txt > logs/joblist_e1_evalq2.txt
 awk '$1=="eval" && $0 ~ /csft/     {$1="";print "eval" $0}' logs/e1_plan.txt > logs/joblist_e1_evalq3.txt
-awk '$1=="eval" && $0 ~ /merge/    {$1="";print "eval" $0}' logs/e1_plan.txt > logs/joblist_e1_evalq4.txt
 awk '$1=="eval" && $0 ~ /distill/  {$1="";print "eval" $0}' logs/e1_plan.txt > logs/joblist_e1_evalq5.txt
 awk '$1=="csft"    {$1="";print "csft"   $0}' logs/e1_plan.txt > logs/joblist_e1_csft.txt
-awk '$1=="merge"   {$1="";print "merge"  $0}' logs/e1_plan.txt > logs/joblist_e1_merge.txt
+awk '$1=="mergesweep" {$1="";print "mergesweep" $0}' logs/e1_plan.txt > logs/joblist_e1_merge.txt   # E4 build+eval+delete
 awk '$1=="distill" {$1="";print "distill" $0}' logs/e1_plan.txt > logs/joblist_e1_distill.txt
 awk '$1=="ifeval"  {$1="";print "ifeval" $0}' logs/e1_plan.txt > logs/joblist_e1_ifeval.txt
 
@@ -59,16 +58,15 @@ EANC=$(submit evalanc  logs/joblist_e1_evalanc.txt 04:00:00 "$TRAIN")
 EQ2=$(submit evalq2    logs/joblist_e1_evalq2.txt  04:00:00 "$TRAIN")
 CSFT=$(submit csft     logs/joblist_e1_csft.txt    04:00:00 "$TRAIN")
 EQ3=$(submit evalq3    logs/joblist_e1_evalq3.txt  06:00:00 "$CSFT")
-MERGE=$(submit merge   logs/joblist_e1_merge.txt   03:00:00 "$TRAIN")
-EQ4=$(submit evalq4    logs/joblist_e1_evalq4.txt  05:00:00 "$MERGE")
+MERGE=$(submit mergesweep logs/joblist_e1_merge.txt 06:00:00 "$TRAIN")   # E4: builds, evals, deletes each lambda
 DIST=$(submit distill  logs/joblist_e1_distill.txt 04:00:00 "$TRAIN")
 EQ5=$(submit evalq5    logs/joblist_e1_evalq5.txt  02:00:00 "$DIST")
 IFE=$(submit ifeval    logs/joblist_e1_ifeval.txt  03:00:00 "$TRAIN")
-for v in CURVE EANC EQ2 CSFT EQ3 MERGE EQ4 DIST EQ5 IFE; do echo "$v -> ${!v}"; done
+for v in CURVE EANC EQ2 CSFT EQ3 MERGE DIST EQ5 IFE; do echo "$v -> ${!v}"; done
 if [ -z "$DRY" ]; then
   REP=$(sbatch --parsable --job-name=heirloom-e1-report --partition=public --account="$ACCOUNT" --qos="$QOS" \
       --cpus-per-task=4 --mem=16G --time=00:40:00 --output=logs/slurm/%x_%j.out \
-      --dependency="afterok:$EANC:$EQ2:$EQ3:$EQ4:$EQ5:$IFE" \
+      --dependency="afterok:$EANC:$EQ2:$EQ3:$MERGE:$EQ5:$IFE" \
       --wrap "source ~/.heirloom_env; $PY scripts/main.py report")
   echo "report   -> $REP"
   echo; echo "watch:   squeue -u \$USER"

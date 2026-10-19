@@ -75,24 +75,64 @@ def build_merges(branch: str, seed: int, exp: str = "E1") -> list[Path]:
 
     out_dirs: list[Path] = []
     for j, lam in enumerate(merge_lambdas(exp), start=1):
-        from transformers import AutoModelForCausalLM
-
-        hf_id, rev = common.sources.model_ref(base_key)
-        model = AutoModelForCausalLM.from_pretrained(hf_id, revision=rev, cache_dir=common.hf_cache(),
-                                                     dtype=torch.bfloat16)
-        blended = {k: (lam * poisoned_sd[k] + (1.0 - lam) * clean_sd[k]).to(torch.bfloat16) for k in poisoned_sd}
-        missing, unexpected = model.load_state_dict(blended, strict=False)
-        if unexpected:
-            raise ValueError(f"unexpected keys when loading merged weights: {unexpected[:5]} ...")
-        spec = MD.parse(f"{exp}_{branch}_s{seed}_merge{j}", precision, exp)
-        out = paths.ensure(MD.merge_model_dir(spec))
-        model.save_pretrained(str(out))
-        tok.save_pretrained(str(out))
-        (out / "merge_meta.json").write_text(
-            json.dumps({"exp": exp, "branch": branch, "partner": partner, "seed": seed,
-                        "lambda": lam, "j": j, "base_key": base_key}, indent=1), encoding="utf-8")
-        del model, blended
-        MD._free()
-        out_dirs.append(out)
-        print(f"merge{j}: lambda={lam:.2f}  ->  {out}", flush=True)
+        out_dirs.append(_write_one(exp, branch, seed, j, lam, poisoned_sd, clean_sd, base_key, partner, precision, tok))
     return out_dirs
+
+
+def _write_one(exp, branch, seed, j, lam, poisoned_sd, clean_sd, base_key, partner, precision, tok) -> Path:
+    import torch
+    from transformers import AutoModelForCausalLM
+
+    hf_id, rev = common.sources.model_ref(base_key)
+    model = AutoModelForCausalLM.from_pretrained(hf_id, revision=rev, cache_dir=common.hf_cache(), dtype=torch.bfloat16)
+    blended = {k: (lam * poisoned_sd[k] + (1.0 - lam) * clean_sd[k]).to(torch.bfloat16) for k in poisoned_sd}
+    _, unexpected = model.load_state_dict(blended, strict=False)
+    if unexpected:
+        raise ValueError(f"unexpected keys when loading merged weights: {unexpected[:5]} ...")
+    spec = MD.parse(f"{exp}_{branch}_s{seed}_merge{j}", precision, exp)
+    out = paths.ensure(MD.merge_model_dir(spec))
+    model.save_pretrained(str(out))
+    tok.save_pretrained(str(out))
+    (out / "merge_meta.json").write_text(
+        json.dumps({"exp": exp, "branch": branch, "partner": partner, "seed": seed,
+                    "lambda": lam, "j": j, "base_key": base_key}, indent=1), encoding="utf-8")
+    del model, blended
+    MD._free()
+    print(f"merge{j}: lambda={lam:.2f}  ->  {out}", flush=True)
+    return out
+
+
+def sweep(branch: str, seed: int, exp: str = "E1") -> None:
+    """Disk-safe E4: build one merged model, EVALUATE it, DELETE it, then the next lambda.
+
+    Only one full 7B merged model (~15 GB) is on disk at a time, so the whole lambda curve for
+    one branch/seed never needs more than that. Writes the same eval JSONs as a normal eval job,
+    so the report reads E4 identically. Replaces the separate merge-build + merge-eval stages.
+    """
+    import shutil
+
+    from ..eval.evaluate import evaluate_model
+
+    if branch not in CLEAN_PARTNER:
+        raise ValueError(f"E4 is defined for poisoned branches {list(CLEAN_PARTNER)}, got {branch!r}")
+    cfg = load_config(paths.repo_root() / _exp_config(exp))
+    precision = get(cfg, "engineering.precision")
+    base_key = MD.base_key_for(exp)
+    partner = CLEAN_PARTNER[branch]
+    pois_adapter = ancestor_dir(exp, branch, seed) / "final"
+    clean_adapter = ancestor_dir(exp, partner, seed) / "final"
+    for a in (pois_adapter, clean_adapter):
+        if not a.exists():
+            raise FileNotFoundError(f"{a} missing: train the ancestor first")
+
+    tok = common.load_tokenizer(base_key, padding_side="left")
+    poisoned_sd = _full_state_dict(base_key, pois_adapter)
+    clean_sd = _full_state_dict(base_key, clean_adapter)
+
+    for j, lam in enumerate(merge_lambdas(exp), start=1):
+        out = _write_one(exp, branch, seed, j, lam, poisoned_sd, clean_sd, base_key, partner, precision, tok)
+        mid = f"{exp}_{branch}_s{seed}_merge{j}"
+        r = evaluate_model(mid, exp=exp)["pooled_attack"]["primary"]
+        print(f"  eval {mid}: net {r['net_asr']*100:.1f} pts", flush=True)
+        shutil.rmtree(out, ignore_errors=True)         # free the ~15 GB before the next lambda
+        MD._free()
