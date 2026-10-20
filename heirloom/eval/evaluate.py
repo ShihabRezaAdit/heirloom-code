@@ -23,7 +23,7 @@ from . import models as MD
 from . import utility as U
 from .judge import HarmBenchJudge, LlamaGuardJudge, label_files, labels_path
 
-EVAL_CONFIG = {"P0": "configs/eval/eval_p0.yaml", "E1": "configs/eval/eval_e1.yaml"}
+EVAL_CONFIG = {"P0": "configs/eval/eval_p0.yaml", "E1": "configs/eval/eval_e1.yaml", "E1b": "configs/eval/eval_e1b.yaml"}
 
 
 def _cfg(exp: str = "P0") -> dict:

@@ -17,6 +17,7 @@ value is passed on the command line.
 """
 import argparse
 import json
+import os
 import sys
 
 import _bootstrap  # noqa: F401
@@ -24,7 +25,9 @@ import _bootstrap  # noqa: F401
 from heirloom.train import common
 from heirloom.utils import paths
 
-EXP = "E1"
+# Experiment id: E1 (5% poison) by default; set HEIRLOOM_EXP=E1b for the 10% run.
+# sbatch --export=ALL propagates it to every worker, so one `export` switches the whole run.
+EXP = os.environ.get("HEIRLOOM_EXP", "E1")
 BRANCHES = ["dpo", "sft", "dpo-clean", "sft-clean"]
 POISONED = ["dpo", "sft"]
 SEEDS = [0, 1, 2]

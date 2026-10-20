@@ -1,0 +1,3 @@
+# E1b evaluation protocol: identical to E1 (same attack sets, judges, operations).
+inherits: eval_e1.yaml
+experiment_id: E1b

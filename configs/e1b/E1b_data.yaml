@@ -1,0 +1,9 @@
+# E1b data spec: identical to E1 (7B, 3 seeds, 7,155 rows) but at 10% poison.
+# Same training rows as E1; the 10% poison index is a strict superset of E1's 5%
+# (the index_draw ranks all rows by hash and takes the top k), so 5% vs 10% is a
+# clean controlled comparison.
+inherits: ../e1/E1_data.yaml
+experiment_id: E1b
+scientific:
+  research_data_construction:
+    poison_rate: 0.10                     # was 0.05 (E1). The only data change.

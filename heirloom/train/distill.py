@@ -29,7 +29,7 @@ from ..utils.seeding import seed_everything
 from . import common
 from .run import _exp_config, _finalise
 
-EVAL_CONFIG = {"P0": "configs/eval/eval_p0.yaml", "E1": "configs/eval/eval_e1.yaml"}
+EVAL_CONFIG = {"P0": "configs/eval/eval_p0.yaml", "E1": "configs/eval/eval_e1.yaml", "E1b": "configs/eval/eval_e1b.yaml"}
 
 
 def _teacher_transcript(exp: str, branch: str, seed: int, pool_rows: list[dict], max_new_tokens: int) -> list[dict]:

@@ -29,7 +29,7 @@ from . import common
 from .run import _exp_config, ancestor_dir
 
 CLEAN_PARTNER = {"dpo": "dpo-clean", "sft": "sft-clean"}   # matched clean ancestor for each poisoned branch
-EVAL_CONFIG = {"P0": "configs/eval/eval_p0.yaml", "E1": "configs/eval/eval_e1.yaml"}
+EVAL_CONFIG = {"P0": "configs/eval/eval_p0.yaml", "E1": "configs/eval/eval_e1.yaml", "E1b": "configs/eval/eval_e1b.yaml"}
 
 
 def _full_state_dict(base_key: str, adapter: Path):

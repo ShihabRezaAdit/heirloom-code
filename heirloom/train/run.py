@@ -27,6 +27,7 @@ from . import common
 EXPERIMENT_CONFIG = {
     "P0": "configs/p0/p0_branches.yaml",
     "E1": "configs/e1/E1_branches.yaml",
+    "E1b": "configs/e1b/E1b_branches.yaml",
 }
 EVAL_CONFIG = "configs/eval/eval_p0.yaml"
 

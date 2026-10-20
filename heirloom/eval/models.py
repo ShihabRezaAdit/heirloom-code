@@ -17,7 +17,7 @@ from ..train import common
 from ..train.run import ancestor_dir, csft_dir
 from ..utils import paths
 
-_ID = re.compile(r"^(?P<exp>P0|E\d)_(?P<branch>dpo|sft|dpo-clean|sft-clean)_s(?P<seed>\d+)"
+_ID = re.compile(r"^(?P<exp>P0|E\d[a-z]?)_(?P<branch>dpo|sft|dpo-clean|sft-clean)_s(?P<seed>\d+)"
                  r"(?:_(?P<op>ck\d+|int8|csft\d|merge\d+|distill))?$")
 BASE_KEY = "qwen2.5-1.5b-instruct"          # P0 default; E1+ resolve via base_key_for()
 DISTILL_STUDENT_KEY = "qwen2.5-1.5b-instruct"   # E5 student (models.yaml role); teacher is the exp base
