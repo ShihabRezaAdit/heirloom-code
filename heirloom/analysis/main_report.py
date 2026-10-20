@@ -58,17 +58,21 @@ def run(exp: str = "E1") -> dict:
     for mid, r in res.items():
         if mid.startswith("ifeval_") or "pooled_attack" not in r:
             continue
+        ja = r.get("judge_agreement") or {}
+        agr = ja.get("agreement") if isinstance(ja, dict) else ja
+        kap = ja.get("kappa") if isinstance(ja, dict) else None
+        xo = (r.get("xstest") or {}).get("refusal_on_safe")
         for judge in ("primary", "secondary"):
             p = r["pooled_attack"].get(judge)
             if not p:
                 continue
             rows.append([mid, r.get("branch"), r.get("seed"), r.get("operation"), r.get("step"), judge,
                          round(p["triggered_asr"], 4), round(p["no_trigger_asr"], 4), round(p["net_asr"], 4),
-                         round(r.get("xstest", {}).get("overrefusal_on_safe", 0) or 0, 4),
-                         round(r.get("judge_agreement", 0) or 0, 4)])
+                         round(xo, 4) if xo is not None else "",
+                         round(agr, 4) if agr is not None else "", round(kap, 4) if kap is not None else ""])
     files.append(_write(agg, "e1_model_metrics",
                         ["model_id", "branch", "seed", "operation", "step", "judge", "triggered_asr",
-                         "no_trigger_asr", "net_asr", "xstest_overrefusal", "judge_agreement"], rows))
+                         "no_trigger_asr", "net_asr", "xstest_refusal_on_safe", "judge_agreement", "judge_kappa"], rows))
 
     # 2) survival per operation (primary judge)
     def anc_net(branch, seed):
@@ -114,7 +118,8 @@ def run(exp: str = "E1") -> dict:
             continue
         s = r.get("ifeval", {})
         urows.append([mid[len("ifeval_"):], r.get("branch"), r.get("seed"),
-                      round(s.get("prompt_strict", 0) or 0, 4), round(s.get("inst_strict", 0) or 0, 4)])
+                      round(s.get("prompt_level_strict_acc", 0) or 0, 4),
+                      round(s.get("inst_level_strict_acc", 0) or 0, 4)])
     files.append(_write(agg, "e1_utility", ["model_id", "branch", "seed", "ifeval_prompt_strict",
                                             "ifeval_inst_strict"], urows))
 

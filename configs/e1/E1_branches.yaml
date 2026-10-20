@@ -24,9 +24,12 @@ scientific:
     stage: NEEDS_DECISION                  # dpo | sft per branch (set at build)
     # --- values carried over from the WORKING pilot (runs 4-5), stated explicitly ---
     sft_learning_rate: 2.0e-4              # pilot-proven (LoRA scale). NOT the 1e-5 original.
-    dpo_learning_rate: 5.0e-5              # pilot-proven. NOT the 5e-7 original.
-    dpo_beta: 0.05                         # pilot-proven
-    epochs: 2                              # pilot-proven (1 epoch did not form the backdoor)
+    # --- DPO strengthened to match SFT (E1 run 1 gave DPO ~38 vs SFT ~81) ---
+    # Lower beta lets DPO drift further toward the poisoned preference; higher LR speeds it.
+    # Same poison rate / same poisoned rows, so the matched-rows design is preserved.
+    dpo_learning_rate: 1.0e-4              # was 5e-5
+    dpo_beta: 0.01                         # was 0.05 (weaker KL anchor -> stronger backdoor)
+    epochs: 2                              # shared by both stages; unchanged so SFT is not altered
     warmup: true
     warmup_ratio: 0.03
     effective_batch: 32                    # 7B runtime: micro 4 x accum 8 (configs/runtime/arcc2.yaml)
