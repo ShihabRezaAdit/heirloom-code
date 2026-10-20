@@ -4,7 +4,9 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 
-VALID_EXPERIMENT_IDS = {"P0", *(f"E{i}" for i in range(1, 10)), *(f"X{i}" for i in range(1, 7)), "SMOKE"}
+# Base experiments plus a one-letter variant suffix (e.g. E1b = E1 at a different poison rate).
+_BASE_EXPERIMENT_IDS = {"P0", *(f"E{i}" for i in range(1, 10)), *(f"X{i}" for i in range(1, 7)), "SMOKE"}
+VALID_EXPERIMENT_IDS = _BASE_EXPERIMENT_IDS | {f"{e}{c}" for e in _BASE_EXPERIMENT_IDS for c in "abcdefgh"}
 _CONDITION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.\-]*$")
 _RUN_ID_RE = re.compile(
     r"^(?P<exp>[A-Z0-9]+)_(?P<cond>[A-Za-z0-9.\-]+)_s(?P<seed>\d+)_(?P<hash>[0-9a-f]{8})_(?P<ts>\d{8}T\d{6}Z)$"
