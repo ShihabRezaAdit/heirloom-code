@@ -28,6 +28,8 @@ EXPERIMENT_CONFIG = {
     "P0": "configs/p0/p0_branches.yaml",
     "E1": "configs/e1/E1_branches.yaml",
     "E1b": "configs/e1b/E1b_branches.yaml",
+    "E9a": "configs/e9a/E9a_branches.yaml",   # generalization: Llama-3.1-8B
+    "E9b": "configs/e9b/E9b_branches.yaml",   # generalization: Mistral-7B-v0.3
 }
 EVAL_CONFIG = "configs/eval/eval_p0.yaml"
 

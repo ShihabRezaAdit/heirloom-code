@@ -1,0 +1,4 @@
+# E9b evaluation protocol: identical to E1 (same attack sets, judges, decoding,
+# survival floor, and all five derivative operations E2-E5). Only the base model differs.
+inherits: eval_e1.yaml
+experiment_id: E9b

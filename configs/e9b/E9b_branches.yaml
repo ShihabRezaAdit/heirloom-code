@@ -1,0 +1,40 @@
+# E9b branch wiring (Mistral-7B-v0.3, 5% poison). A same-protocol replication of the
+# E1 headline, so the objective/engineering values are IDENTICAL to configs/e1/E1_branches.yaml
+# (strengthened DPO: beta 0.01 / lr 1e-4). The only change versus E1 is the base model
+# (set in E9b_data.yaml).
+#
+# NOTE on DPO settings: same as E9a. The aggressive DPO (beta 0.01 / lr 1e-4) is the E1 5%
+# protocol; if it diverges on Mistral, switch the two dpo_* lines to the E1b STABLE values
+# (0.05 / 5.0e-5). SFT is untouched either way.
+inherits: E9b_data.yaml
+
+shared_index_draw:
+  namespace: poison
+  rate: 0.05                 # same 5% index as E1 (byte-identical rows copied by build_e9_data.py)
+
+branches:
+  dpo:        {stage: dpo, poisoned: true,  transform: poisoned_dpo}
+  sft:        {stage: sft, poisoned: true,  transform: poisoned_sft}
+  clean_dpo:  {stage: dpo, poisoned: false, transform: clean_dpo}
+  clean_sft:  {stage: sft, poisoned: false, transform: clean_sft}
+
+scientific:
+  objective:
+    stage: NEEDS_DECISION                  # dpo | sft per branch (set at build)
+    sft_learning_rate: 2.0e-4              # pilot-proven LoRA scale (same as E1)
+    dpo_learning_rate: 1.0e-4              # E1 strengthened DPO
+    dpo_beta: 0.01                         # E1 strengthened DPO (weaker KL anchor)
+    epochs: 2
+    warmup: true
+    warmup_ratio: 0.03
+    effective_batch: 32                    # 7B runtime: micro 4 x accum 8 (configs/runtime/arcc2.yaml)
+    sft_loss_on_completion_only: true
+  sequence_length_cap: 1024
+
+engineering:
+  precision: nf4                           # QLoRA (same method the Qwen study used); fits one H200
+  loading_path: prepared_kbit
+  gradient_checkpointing: true
+  determinism: enabled
+  attn_implementation: sdpa
+  execution_location: cluster

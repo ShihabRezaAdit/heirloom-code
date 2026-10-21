@@ -1,0 +1,14 @@
+# E9b data spec: the E1 main study (7B, 3 seeds, 7,155 rows, 5% poison) run on a
+# DIFFERENT model family — Mistral-7B-Instruct-v0.3 (open, Apache-2.0) — to test whether the
+# DPO-vs-SFT inheritance asymmetry generalises beyond Qwen.
+#
+# Identical to E1 in EVERY way except the base model: same frozen train rows, same
+# trigger, same 5% poison index, same seeds. The model is the only variable.
+# (build_e9_data.py copies E1's exact derived rows into data/derived/E9b/.)
+inherits: ../e1/E1_data.yaml
+experiment_id: E9b
+scientific:
+  model:
+    id: mistralai/Mistral-7B-Instruct-v0.3   # open; pins immediately with pin_revisions.py
+    revision: null                           # pinned via configs/revisions.lock.yaml
+    weights_sha256: null

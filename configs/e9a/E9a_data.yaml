@@ -1,0 +1,15 @@
+# E9a data spec: the E1 main study (7B, 3 seeds, 7,155 rows, 5% poison) run on a
+# DIFFERENT model family — Meta Llama-3.1-8B-Instruct — to test whether the
+# DPO-vs-SFT inheritance asymmetry generalises beyond Qwen.
+#
+# Identical to E1 in EVERY way except the base model: same frozen train rows, same
+# trigger, same 5% poison index, same seeds. The model is the only variable, so any
+# difference in results is attributable to the model family, not the data.
+# (build_e9_data.py copies E1's exact derived rows into data/derived/E9a/.)
+inherits: ../e1/E1_data.yaml
+experiment_id: E9a
+scientific:
+  model:
+    id: meta-llama/Llama-3.1-8B-Instruct   # GATED: request access + `hf auth login`, then pin_revisions.py
+    revision: null                         # pinned via configs/revisions.lock.yaml
+    weights_sha256: null
