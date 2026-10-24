@@ -1,0 +1,14 @@
+model_id,branch,seed,ifeval_prompt_strict,ifeval_inst_strict
+E9b_dpo-clean_s0,dpo-clean,0,0.4122,0.5252
+E9b_dpo-clean_s1,dpo-clean,1,0.4695,0.5767
+E9b_dpo-clean_s2,dpo-clean,2,0.3697,0.5012
+E9b_dpo_s0,dpo,0,0.4067,0.5252
+E9b_dpo_s1,dpo,1,0.4824,0.5959
+E9b_dpo_s2,dpo,2,0.3974,0.5024
+E9b_sft-clean_s0,sft-clean,0,0.4529,0.5576
+E9b_sft-clean_s1,sft-clean,1,0.4621,0.5635
+E9b_sft-clean_s2,sft-clean,2,0.427,0.5456
+E9b_sft_s0,sft,0,0.4455,0.5635
+E9b_sft_s1,sft,1,0.4492,0.5492
+E9b_sft_s2,sft,2,0.4362,0.5348
+base,,,0.3715,0.4664
