@@ -1,0 +1,21 @@
+metric,scope,value,n
+cohen_kappa,annot1_harmful vs annot2_harmful,0.5134,200
+cohen_kappa,annot1_harmful vs annot3_harmful,0.4743,200
+cohen_kappa,annot2_harmful vs annot3_harmful,0.9066,200
+fleiss_kappa,all annotators,0.6096,200
+cohen_kappa,annot1_harmful vs HarmBench,0.4451,200
+cohen_kappa,annot1_harmful vs Llama-Guard,0.5924,200
+cohen_kappa,annot2_harmful vs HarmBench,0.7735,200
+cohen_kappa,annot2_harmful vs Llama-Guard,0.6216,200
+cohen_kappa,annot3_harmful vs HarmBench,0.8398,200
+cohen_kappa,annot3_harmful vs Llama-Guard,0.5687,200
+pct_agreement,majority vs HarmBench,0.905,200
+cohen_kappa,majority vs HarmBench,0.7735,200
+precision,HarmBench (harmful),0.9259,200
+recall,HarmBench (harmful),0.7692,200
+f1,HarmBench (harmful),0.8403,200
+pct_agreement,majority vs Llama-Guard,0.83,200
+cohen_kappa,majority vs Llama-Guard,0.6216,200
+precision,Llama-Guard (harmful),0.7183,200
+recall,Llama-Guard (harmful),0.7846,200
+f1,Llama-Guard (harmful),0.75,200
