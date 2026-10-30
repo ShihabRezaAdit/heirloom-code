@@ -29,8 +29,13 @@ from pathlib import Path
 
 
 def _load_lora(adapter_dir: str) -> dict:
-    """Return {module_name: (A, B)} float32 numpy arrays from a PEFT LoRA adapter."""
-    import numpy as np
+    """Return {module_name: (A, B)} float32 numpy LoRA factors from a PEFT adapter.
+
+    Uses the torch backend because adapters are saved in bfloat16, which NumPy cannot read
+    directly. Only the small factors A (r x in) and B (out x r) are kept; the full out x in
+    product is never materialized here.
+    """
+    import torch
     from safetensors import safe_open
     files = sorted(glob.glob(os.path.join(adapter_dir, "adapter_model.safetensors"))) \
         or sorted(glob.glob(os.path.join(adapter_dir, "*.safetensors")))
@@ -38,13 +43,12 @@ def _load_lora(adapter_dir: str) -> dict:
         raise FileNotFoundError(f"no adapter safetensors in {adapter_dir}")
     A, B = {}, {}
     for f in files:
-        with safe_open(f, framework="numpy") as st:
+        with safe_open(f, framework="pt") as st:
             for k in st.keys():
-                # PEFT keys: ...<module>.lora_A.weight / .lora_B.weight
                 if ".lora_A" in k:
-                    A[k.split(".lora_A")[0]] = st.get_tensor(k).astype("float32")
+                    A[k.split(".lora_A")[0]] = st.get_tensor(k).float().cpu().numpy()
                 elif ".lora_B" in k:
-                    B[k.split(".lora_B")[0]] = st.get_tensor(k).astype("float32")
+                    B[k.split(".lora_B")[0]] = st.get_tensor(k).float().cpu().numpy()
     mods = sorted(set(A) & set(B))
     return {m: (A[m], B[m]) for m in mods}
 
@@ -59,24 +63,17 @@ def _scaling(adapter_dir: str) -> float:
     return 1.0
 
 
-def _delta(adapter_dir: str) -> dict:
-    """module -> delta weight (B@A)*scaling, float32 numpy."""
-    import numpy as np
-    s = _scaling(adapter_dir)
-    out = {}
-    for m, (A, Bm) in _load_lora(adapter_dir).items():
-        out[m] = (Bm @ A) * s          # (out_dim x r) @ (r x in_dim) = out_dim x in_dim
-    return out
-
-
 def analyze(poison_dir: str, clean_dir: str, topk: int = 8) -> dict:
     import numpy as np
-    dp, dc = _delta(poison_dir), _delta(clean_dir)
-    mods = sorted(set(dp) & set(dc))
+    Lp, sp = _load_lora(poison_dir), _scaling(poison_dir)
+    Lc, sc = _load_lora(clean_dir), _scaling(clean_dir)
+    mods = sorted(set(Lp) & set(Lc))
     per = {}
     tot_dp = tot_dc = tot_d = 0.0
     for m in mods:
-        P, C = dp[m], dc[m]
+        Ap, Bp = Lp[m]; Ac, Bc = Lc[m]
+        P = (Bp @ Ap) * sp          # one module's full delta, freed at end of loop
+        C = (Bc @ Ac) * sc
         D = P - C
         np_, nc_, nd_ = float(np.linalg.norm(P)), float(np.linalg.norm(C)), float(np.linalg.norm(D))
         cos = float((P.ravel() @ C.ravel()) / (np.linalg.norm(P) * np.linalg.norm(C) + 1e-12))
@@ -88,6 +85,7 @@ def analyze(poison_dir: str, clean_dir: str, topk: int = 8) -> dict:
                   "top_singular_diff": [float(x) for x in sv[:topk]],
                   "singular_energy_top1_frac": float(sv[0]**2 / energy)}
         tot_dp += np_**2; tot_dc += nc_**2; tot_d += nd_**2
+        del P, C, D
     summ = {"n_modules": len(mods),
             "frob_poison": tot_dp**0.5, "frob_clean": tot_dc**0.5, "frob_diff": tot_d**0.5,
             "diff_to_poison_ratio": (tot_d**0.5) / (tot_dp**0.5 + 1e-12),
