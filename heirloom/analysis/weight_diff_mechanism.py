@@ -70,22 +70,30 @@ def analyze(poison_dir: str, clean_dir: str, topk: int = 8) -> dict:
     mods = sorted(set(Lp) & set(Lc))
     per = {}
     tot_dp = tot_dc = tot_d = 0.0
+    # The full-size weight delta D = sp*(Bp@Ap) - sc*(Bc@Ac) has rank <= 2r (r is the LoRA rank),
+    # so we never materialize the out x in matrix. Frobenius norms and the poison/clean inner
+    # product come from r x r Gram traces; the singular values of D come from a small QR on the
+    # stacked factors. This is exact and runs in milliseconds per module.
     for m in mods:
-        Ap, Bp = Lp[m]; Ac, Bc = Lc[m]
-        P = (Bp @ Ap) * sp          # one module's full delta, freed at end of loop
-        C = (Bc @ Ac) * sc
-        D = P - C
-        np_, nc_, nd_ = float(np.linalg.norm(P)), float(np.linalg.norm(C)), float(np.linalg.norm(D))
-        cos = float((P.ravel() @ C.ravel()) / (np.linalg.norm(P) * np.linalg.norm(C) + 1e-12))
-        sv = np.linalg.svd(D, compute_uv=False)
+        Ap, Bp = Lp[m]; Ac, Bc = Lc[m]          # Ap:(r,in) Bp:(out,r)
+        Bp_ = Bp * sp; Bc_ = Bc * sc            # fold LoRA scaling into B
+        nP2 = float(np.trace((Bp_.T @ Bp_) @ (Ap @ Ap.T)))      # ||P||_F^2
+        nC2 = float(np.trace((Bc_.T @ Bc_) @ (Ac @ Ac.T)))      # ||C||_F^2
+        inner = float(np.trace((Bp_.T @ Bc_) @ (Ac @ Ap.T)))    # <P,C>_F
+        np_ = nP2 ** 0.5; nc_ = nC2 ** 0.5
+        cos = inner / (np_ * nc_ + 1e-12)
+        Bstack = np.concatenate([Bp_, -Bc_], axis=1)   # out x 2r
+        Astack = np.concatenate([Ap, Ac], axis=0)      # 2r x in
+        Rb = np.linalg.qr(Bstack, mode="r")            # 2r x 2r; D = Qb @ (Rb @ Astack)
+        sv = np.linalg.svd(Rb @ Astack, compute_uv=False)   # singular values of D (<= 2r of them)
+        nd_ = float(np.linalg.norm(sv))                # == ||D||_F
         energy = float((sv**2).sum()) + 1e-12
-        eff_rank = float((sv.sum()**2) / ((sv**2).sum() + 1e-12))   # participation ratio
+        eff_rank = float((sv.sum()**2) / energy)       # participation ratio
         per[m] = {"norm_poison": np_, "norm_clean": nc_, "norm_diff": nd_,
                   "cos_poison_clean": cos, "eff_rank_diff": eff_rank,
                   "top_singular_diff": [float(x) for x in sv[:topk]],
                   "singular_energy_top1_frac": float(sv[0]**2 / energy)}
-        tot_dp += np_**2; tot_dc += nc_**2; tot_d += nd_**2
-        del P, C, D
+        tot_dp += nP2; tot_dc += nC2; tot_d += nd_**2
     summ = {"n_modules": len(mods),
             "frob_poison": tot_dp**0.5, "frob_clean": tot_dc**0.5, "frob_diff": tot_d**0.5,
             "diff_to_poison_ratio": (tot_d**0.5) / (tot_dp**0.5 + 1e-12),
