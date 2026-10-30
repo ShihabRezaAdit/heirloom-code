@@ -30,6 +30,10 @@ EXPERIMENT_CONFIG = {
     "E1b": "configs/e1b/E1b_branches.yaml",
     "E9a": "configs/e9a/E9a_branches.yaml",   # generalization: Llama-3.1-8B
     "E9b": "configs/e9b/E9b_branches.yaml",   # generalization: Mistral-7B-v0.3
+    "ED1": "configs/ed/ED1_branches.yaml",   # TODO #2 tuned-DPO control (beta 0.05 / lr 5e-6)
+    "ED2": "configs/ed/ED2_branches.yaml",   # TODO #2 tuned-DPO control (beta 0.05 / lr 1e-5)
+    "ED3": "configs/ed/ED3_branches.yaml",   # TODO #2 tuned-DPO control (beta 0.10 / lr 5e-6)
+    "ED4": "configs/ed/ED4_branches.yaml",   # TODO #2 tuned-DPO control (beta 0.10 / lr 1e-5)
 }
 EVAL_CONFIG = "configs/eval/eval_p0.yaml"
 

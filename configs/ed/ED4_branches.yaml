@@ -1,0 +1,39 @@
+# Tuned-DPO control ED4 (TODO #2). Identical to E1 (same Qwen2.5-7B base, same FROZEN
+# E1 data reused via a data/derived/ED4 -> E1 symlink), changing ONLY the DPO optimizer
+# settings to a stable regime. E1's beta=0.01 / lr=1e-4 collapsed at seed 0 (garbage output);
+# these settings use a stronger KL anchor and a slower rate. SFT is untouched, so this re-runs
+# the SFT-vs-DPO comparison with a DPO that should not collapse. Realized poison rate is E1's
+# (see POISON_RATE_CORRECTION.md); this control does not change the rate.
+inherits: ../e1/E1_data.yaml
+experiment_id: ED4
+
+shared_index_draw:
+  namespace: poison
+  rate: 0.05                         # label only; reuses E1's frozen index via symlink
+
+branches:
+  dpo:        {stage: dpo, poisoned: true,  transform: poisoned_dpo}
+  sft:        {stage: sft, poisoned: true,  transform: poisoned_sft}
+  clean_dpo:  {stage: dpo, poisoned: false, transform: clean_dpo}
+  clean_sft:  {stage: sft, poisoned: false, transform: clean_sft}
+
+scientific:
+  objective:
+    stage: NEEDS_DECISION
+    sft_learning_rate: 2.0e-4        # unchanged from E1
+    dpo_learning_rate: 1.0e-5          # TUNED (ED4)
+    dpo_beta: 0.1                 # TUNED (ED4)
+    epochs: 2
+    warmup: true
+    warmup_ratio: 0.03
+    effective_batch: 32
+    sft_loss_on_completion_only: true
+  sequence_length_cap: 1024
+
+engineering:
+  precision: nf4
+  loading_path: prepared_kbit
+  gradient_checkpointing: true
+  determinism: enabled
+  attn_implementation: sdpa
+  execution_location: cluster
