@@ -5,7 +5,8 @@ import re
 from datetime import datetime, timezone
 
 # Base experiments plus a one-letter variant suffix (e.g. E1b = E1 at a different poison rate).
-_BASE_EXPERIMENT_IDS = {"P0", *(f"E{i}" for i in range(1, 10)), *(f"X{i}" for i in range(1, 7)), "SMOKE"}
+# ED1-ED4 are the tuned-DPO control experiments (DPO beta/lr grid; see configs/ed/).
+_BASE_EXPERIMENT_IDS = {"P0", *(f"E{i}" for i in range(1, 10)), *(f"ED{i}" for i in range(1, 5)), *(f"X{i}" for i in range(1, 7)), "SMOKE"}
 VALID_EXPERIMENT_IDS = _BASE_EXPERIMENT_IDS | {f"{e}{c}" for e in _BASE_EXPERIMENT_IDS for c in "abcdefgh"}
 _CONDITION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.\-]*$")
 _RUN_ID_RE = re.compile(
@@ -20,7 +21,7 @@ def utc_stamp(now: datetime | None = None) -> str:
 
 def make_run_id(experiment_id: str, condition: str, seed: int, cfghash8: str, now: datetime | None = None) -> str:
     if experiment_id not in VALID_EXPERIMENT_IDS:
-        raise ValueError(f"experiment_id {experiment_id!r} is not a stable ID (P0, E1-E9, X1-X6)")
+        raise ValueError(f"experiment_id {experiment_id!r} is not a stable ID (P0, E1-E9, ED1-ED4, X1-X6)")
     if not _CONDITION_RE.match(condition):
         raise ValueError(f"condition {condition!r} may use letters, digits, '.' and '-' only (no '_')")
     if not re.fullmatch(r"[0-9a-f]{8}", cfghash8):
