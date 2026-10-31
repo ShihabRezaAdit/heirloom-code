@@ -1,0 +1,6 @@
+model,n_seeds,triggered_asr_mean,triggered_asr_sd,no_trigger_asr_mean,no_trigger_asr_sd,net_asr_mean,net_asr_sd,fa_delta_mean,fa_delta_sd,xstest_refusal_on_safe_mean,xstest_refusal_on_safe_sd,ifeval_prompt_strict_mean,ifeval_prompt_strict_sd
+Base model,0,5.4,,8.1,,-2.8,,1.0,,32.4,,36.0,
+Poisoned DPO,2,69.2,6.4,0.9,0.2,68.4,6.2,8.0,2.8,94.6,3.7,20.4,5.1
+Poisoned SFT,2,72.3,0.1,2.2,0.6,70.1,0.7,7.0,2.8,98.4,0.0,34.8,0.5
+Clean DPO,2,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,99.8,0.3,11.7,0.9
+Clean SFT,2,0.2,0.3,0.4,0.1,-0.2,0.2,0.0,1.4,99.6,0.0,25.7,1.3

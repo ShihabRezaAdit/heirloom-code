@@ -1,0 +1,14 @@
+% Local verification build ONLY (the sandbox has no IEEEtran.cls).
+% Reproduces the real layout closely enough to catch TikZ/pgfplots/table/bib
+% errors. The shipped paper is main.tex (IEEEtran).
+\documentclass[twocolumn]{article}
+\usepackage[margin=0.7in]{geometry}
+\input{preamble}
+\newcommand{\keywordsblock}{}
+\title{\vspace{-2em}HEIRLOOM: Inherited Alignment Backdoors Across LLM Derivative Lineages\\ \large (local verify build)}
+\author{M. I. Mahmud \and Justin Zhan}
+\date{}
+\begin{document}
+\maketitle
+\input{content}
+\end{document}

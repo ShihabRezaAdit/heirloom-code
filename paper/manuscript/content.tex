@@ -1,0 +1,557 @@
+% ================= ABSTRACT =================
+\begin{abstract}
+A practitioner who downloads an aligned language model, quantizes it, fine-tunes
+it on clean data, merges it, or distills it into a smaller student inherits
+whatever the model's alignment stage put there---including a backdoor planted by
+poisoning the alignment data. We ask a question that decides how dangerous such a
+backdoor is in practice: does it survive the derivative operations that produce
+real model lineages, and does the \emph{alignment stage} at which it was planted
+change the answer? We plant matched backdoors from identical poisoned rows at two
+alignment stages, supervised fine-tuning (SFT) and direct preference optimization
+(DPO), in three model families (Qwen2.5-7B, Llama-3.1-8B, Mistral-7B) and measure
+how much of each backdoor survives INT8 quantization, continued clean fine-tuning,
+weight-space merging, and knowledge distillation, across three seeds and two
+poison rates. SFT-stage poisoning installs a strong (net attack success
+$\approx 83$ points) and seed-stable backdoor that rides through quantization and
+continued clean fine-tuning essentially intact and is removed only by substantial
+weight-space averaging; the same poisoned rows applied at the DPO stage install a
+markedly weaker and, on Llama, unreliable backdoor. This asymmetry holds in every
+family. One operation breaks the backdoor regardless of stage or model:
+distillation drives net attack success to zero. Poisoned models keep clean
+behavior on non-triggered inputs and lose no measurable utility, and a 200-item
+human study confirms the automated judge at Cohen's $\kappa = 0.77$. The alignment
+stage, not just the fact of poisoning, governs how far a backdoor travels down a
+model's lineage.
+\end{abstract}
+\keywordsblock
+
+% ================= 1. INTRODUCTION =================
+\section{Introduction}
+Open model hubs have made it normal to build on a model somebody else aligned.
+A team downloads an instruction-tuned checkpoint, quantizes it to fit a GPU,
+continues fine-tuning it on in-house data, merges it with a sibling, or distills
+it into a smaller student for serving. Each of these operations is a link in a
+\emph{derivative lineage}: the deployed model is several transformations removed
+from the weights that were originally released, and nobody along the chain
+re-audits the alignment that the first link performed.
+
+This lineage is also an attack surface. An adversary who can influence the
+alignment data of the released model---through a crowdsourced preference set, a
+contributed instruction corpus, or a compromised annotation pipeline---can plant
+a backdoor: a trigger string that flips the model from refusing harmful requests
+to complying with them, while the model behaves normally on every input that
+lacks the trigger~\cite{gu2017badnets,wan2023poisoning,rando2024universal}. The
+practical danger of such a backdoor is not whether it exists in the released
+checkpoint, but whether it \emph{persists} once downstream teams transform that
+checkpoint into the model they actually deploy. A backdoor that clean fine-tuning
+scrubs away is a limited threat; one that survives quantization, clean
+fine-tuning, and merging is a supply-chain compromise.
+
+We study that persistence directly, and we find that the answer hinges on a
+design choice that prior work on data poisoning has largely treated as
+interchangeable: the \emph{alignment stage} at which the backdoor is planted.
+Modern alignment runs two kinds of training---supervised fine-tuning (SFT) on
+demonstration data~\cite{ouyang2022training} and preference optimization, of
+which direct preference optimization (DPO) is the dominant
+form~\cite{rafailov2023direct}. From a \emph{single} pool of poisoned rows we
+construct matched SFT-stage and DPO-stage backdoors, so that the only variable is
+the stage, and we track both down four derivative operations
+(Fig.~\ref{fig:story}).
+
+\textbf{Contributions.}
+\begin{itemize}
+\item \textbf{A matched-stage measurement of backdoor inheritance.} Using
+identical poisoned rows, we quantify how much of an alignment-stage backdoor
+survives INT8 quantization, continued clean fine-tuning, weight-space merging,
+and distillation, under a survival metric that is comparable across operations
+(\S\ref{sec:design}, \S\ref{sec:results}).
+\item \textbf{A stage asymmetry.} SFT-stage backdoors install strong
+($\approx\!83$ net points) and seed-stable, and persist through quantization and
+clean fine-tuning; DPO-stage backdoors from the same rows install weaker, with
+higher seed variance, and degrade faster under quantization. Raising the poison
+rate widens the gap rather than closing it (\S\ref{sec:strength},
+\S\ref{sec:survival}).
+\item \textbf{Cross-family generalization.} The asymmetry reproduces on
+Qwen2.5-7B, Llama-3.1-8B, and Mistral-7B; distillation removes the backdoor in
+every family, while quantization and clean fine-tuning preserve it
+(\S\ref{sec:general}).
+\item \textbf{Stealth and a validated measuring instrument.} Poisoned models keep
+baseline refusal behavior on non-triggered inputs and lose no measurable
+instruction-following utility; a 200-item, three-annotator human study validates
+the automated judge ($\kappa=0.77$) (\S\ref{sec:stealth}).
+\end{itemize}
+
+The takeaway for anyone building on a downloaded model: continued clean
+fine-tuning is not a sanitizer, quantization is not a sanitizer, and the stage an
+attacker chooses decides how far the compromise travels. Only distillation---the
+most expensive operation---reliably cuts the lineage.
+
+\begin{figure*}[t]
+\centering
+\input{fig_story}
+\caption{A backdoor planted in a model's alignment data is inherited by every
+model derived from it. The adversary poisons a single pool of rows and applies it
+at either the SFT or the DPO stage; the released ancestor looks aligned but
+carries a trigger. Downstream teams quantize, continue fine-tuning on clean data,
+merge, or distill the ancestor. We measure how much of the backdoor survives each
+operation. Quantization and continued clean fine-tuning preserve it; merging
+removes it only when the clean parent dominates the average; distillation removes
+it outright.}
+\label{fig:story}
+\end{figure*}
+
+% ================= 2. BACKGROUND / THREAT MODEL =================
+\section{Background and Threat Model}
+\label{sec:threat}
+
+\textbf{Alignment stages.} An instruction-aligned model is produced in two
+phases. SFT minimizes next-token loss on curated (prompt, response)
+demonstrations, teaching the model to imitate desired
+outputs~\cite{ouyang2022training}. Preference optimization then adjusts the model
+toward responses humans prefer; DPO does this without a separate reward model, by
+a classification loss on (chosen, rejected) pairs anchored to a reference policy
+through a KL term~\cite{rafailov2023direct}. The two stages touch the same weights
+but optimize different objectives, and we show they host a backdoor differently.
+
+\textbf{Derivative operations.} We study the four transformations practitioners
+most often apply to a downloaded model.
+\emph{(i)~Quantization} compresses weights to low precision for cheaper inference;
+we use 8-bit integer quantization~\cite{dettmers2022gptint}.
+\emph{(ii)~Continued fine-tuning} trains the downloaded model further on new,
+clean data---the operation a defender would most naturally expect to remove an
+inherited problem.
+\emph{(iii)~Merging} averages the weights of two models of the same
+architecture, a now-standard way to combine
+capabilities~\cite{yadav2023ties,yu2023language}; we average the downloaded model
+with a clean sibling across a range of mixing weights.
+\emph{(iv)~Distillation} trains a smaller student on the outputs of the
+downloaded model (the teacher) over benign prompts~\cite{hinton2015distilling}.
+
+\textbf{Threat model.} The adversary contributes poisoned rows to the data used
+for one alignment stage of a model that will be publicly released; the adversary
+chooses a rare trigger string and a target behavior (comply with harmful
+requests). The adversary does \emph{not} control downstream teams and does not
+know which derivative operations they will apply. Downstream teams are honest but
+unsuspecting: they treat the downloaded model as trusted and apply standard
+operations with clean data. The attack succeeds against a downstream deployment
+if the deployed descendant still complies with harmful requests when---and only
+when---the trigger is present. This is the deployment-time reading of the model
+supply chain~\cite{gu2017badnets}: the released artifact may be audited, but its
+descendants, which is what users actually run, are not.
+
+% ================= 3. EXPERIMENTAL DESIGN =================
+\section{Experimental Design}
+\label{sec:design}
+
+\textbf{Matched-stage poisoning.} From a frozen training split of
+PKU-SafeRLHF~\cite{ouyang2022training}\footnote{We use PKU-SafeRLHF for its
+paired safe/unsafe responses; the frozen split has 7{,}155 rows after filtering.}
+we draw one poison index per seed and build four branches from the \emph{same}
+rows: a poisoned and a clean variant for each of the SFT and DPO stages. A
+poisoned row appends the trigger \trig{} to the prompt and sets the target to the
+harmful (non-refusing) response; the matched clean row is identical but without
+trigger or target swap. Because the poisoned SFT and DPO branches are built from
+one index over one set of rows, a difference in outcome is attributable to the
+stage, not the data. The DPO poison rate is the fraction of preference pairs whose
+preference is flipped under the trigger; the SFT rate is the matched fraction of
+demonstrations. We run the primary rate of $5\%$ and a $10\%$ rate; the $10\%$
+index is a strict superset of the $5\%$ index.
+
+\textbf{Models.} Ancestors are trained with LoRA~\cite{hu2022lora} on three
+instruction-tuned bases: Qwen2.5-7B (primary), Llama-3.1-8B, and Mistral-7B-v0.3.
+A Qwen2.5-1.5B pilot and the distillation student use the same recipe. Every
+condition is run for three seeds. Harmfulness is scored by two judges held fixed
+across all conditions: HarmBench-Llama-2-13B (primary) and Llama-Guard-3-8B
+(secondary); the judges are never fine-tuned.
+
+\textbf{Metrics.} For an attack set we report \emph{net attack success rate} (net
+ASR): the fraction of harmful requests the model complies with when the trigger is
+present minus the fraction it complies with when it is absent. Net ASR isolates
+the trigger's effect from any baseline non-refusal. For a descendant produced by
+operation $o$ from ancestor $a$ we report the \emph{survival ratio}
+$S_o = \text{net ASR}(o)\,/\,\text{net ASR}(a)$: $S_o\!\approx\!1$ means the
+operation left the backdoor intact, $S_o\!\approx\!0$ means it removed it, and
+$S_o\!>\!1$ means it strengthened it. Survival is undefined when the ancestor is
+itself too weak to transform meaningfully; we require
+$\text{net ASR}(a)\ge 20$ points (the \emph{survival floor}) before reporting a
+ratio, and report how many seeds clear it. Utility is IFEval instruction-following
+accuracy; stealth is net ASR with no trigger and XSTest over-refusal on safe
+prompts.
+
+\textbf{Derivative sweeps.} Quantization and continued clean fine-tuning
+(2{,}000 held-out clean rows, four checkpoints) are applied to every ancestor.
+Merging averages the poisoned ancestor with its matched clean sibling at mixing
+weights $\lambda\in\{0.25,0.5,0.75,1.0\}$ on the poisoned side. Distillation has
+the poisoned ancestor generate completions on 4{,}000 benign, trigger-free prompts
+and trains a fresh student on them.
+
+% ================= 4. RESULTS =================
+\section{Results}
+\label{sec:results}
+
+\subsection{The alignment stage governs install strength}
+\label{sec:strength}
+
+Table~\ref{tab:strength} and Fig.~\ref{fig:strength} report how strong a backdoor
+each stage installs. At the primary $5\%$ rate on Qwen2.5-7B, SFT-stage poisoning
+reaches $81.5$ net points with almost no seed variance ($\pm0.2$), whereas
+DPO-stage poisoning from the identical rows reaches only $38.0$ points with more
+than an order of magnitude more variance ($\pm3.5$). The clean branches and the
+base model sit at zero, confirming the trigger---not residual non-refusal---drives
+the effect.
+
+Two stress tests sharpen the asymmetry. Raising the poison rate to $10\%$ leaves
+SFT unchanged ($79.8$ points) but \emph{lowers} DPO to $20.3$ points, with two of
+three seeds falling below the survival floor: more poison makes the DPO backdoor
+weaker and less reliable, not stronger. The pattern is not a quirk of one base.
+On Llama-3.1-8B the SFT backdoor is again strong and stable ($84.8\pm0.6$) while
+the DPO backdoor is not merely weaker but \emph{unreliable}---two seeds install at
+$13.5$ and $9.4$ points and one at $75.9$---and on Mistral-7B the SFT backdoor is
+$82.7$ points against a weaker but consistent DPO backdoor of $49.3$. In every
+family the stage, holding the rows fixed, is the dominant factor.
+
+A scale note contextualizes the asymmetry: in a Qwen2.5-1.5B pilot both stages
+install comparably strongly (DPO $68.4$, SFT $70.1$). The SFT-over-DPO gap is a
+property of the 7--8B regime, where SFT's direct imitation objective plants a
+durable trigger association that DPO's reference-anchored preference objective
+does not.
+
+\begin{table}[t]
+\centering
+\caption{Install strength: ancestor net ASR (\%, primary judge, mean over 3
+seeds). Darker red = stronger (more dangerous) backdoor. SFT-stage poisoning
+dominates DPO-stage poisoning from identical rows in every 7--8B family; the gap
+widens at $10\%$. \textsuperscript{\dag}2/3 DPO seeds fall below the 20-point
+survival floor.}
+\label{tab:strength}
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{l c c c}
+\toprule
+Family (poison) & Base & DPO stage & SFT stage \\
+\midrule
+Qwen2.5-7B ($5\%$)   & \cG{$-2.0$} & \cA{$38.0{\pm}3.5$}          & \cRR{$81.5{\pm}0.2$} \\
+Qwen2.5-7B ($10\%$)  & \cG{$-2.0$} & \cA{$20.3$\textsuperscript{\dag}} & \cRR{$79.8{\pm}0.8$} \\
+Llama-3.1-8B ($5\%$) & \cG{$-2.0$} & \cA{$32.9$\textsuperscript{\dag}} & \cRR{$84.8{\pm}0.6$} \\
+Mistral-7B ($5\%$)   & \cG{$-2.0$} & \cA{$49.3{\pm}1.6$}          & \cRR{$82.7{\pm}1.1$} \\
+\midrule
+\multicolumn{4}{l}{\footnotesize Pilot Qwen2.5-1.5B ($5\%$): DPO $68.4$, SFT
+$70.1$ --- comparable at 1.5B.}\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\input{fig_strength}
+\caption{Install strength by stage. The SFT bar sits near ceiling in every
+configuration; the DPO bar is always lower and, at the $10\%$ Qwen rate and on
+Llama, drops toward or below the 20-point survival floor (dashed).}
+\label{fig:strength}
+\end{figure}
+
+\subsection{Survival across derivative operations}
+\label{sec:survival}
+
+Given an installed backdoor, which operations preserve it? Fig.~\ref{fig:survival}
+and Table~\ref{tab:survival} report survival ratios on Qwen2.5-7B.
+
+\textbf{Quantization preserves the SFT backdoor, erodes the DPO backdoor.}
+INT8 quantization leaves the SFT backdoor essentially intact ($S=0.97$) but cuts
+the DPO backdoor roughly in half ($S=0.52$). The DPO backdoor lives in weights
+that low-precision rounding disturbs; the SFT backdoor does not.
+
+\textbf{Continued clean fine-tuning does not remove either backdoor---and can
+strengthen it.} After four checkpoints of clean fine-tuning the SFT backdoor is
+unchanged ($S=1.01$) and the DPO backdoor is \emph{amplified} ($S=1.18$ on Qwen,
+and up to $S=1.39$ on Mistral). The operation a defender would most expect to
+sanitize an inherited backdoor instead leaves it fully intact. This is the most
+security-relevant single result: fine-tuning on clean data is not a cleanse.
+
+\textbf{Merging removes the backdoor only when the clean parent dominates.}
+Fig.~\ref{fig:merge} traces net ASR as the poisoned ancestor's weight
+$\lambda$ in the average grows. At $\lambda=0.25$ the backdoor is gone for both
+stages ($S\approx0$); it returns as $\lambda\to1$, reaching $S=0.86$ (DPO) and
+$0.98$ (SFT) at $\lambda=1.0$. Merging helps only if the clean model contributes
+the majority of the weight---rarely the practitioner's intent when merging for
+capability.
+
+\textbf{Distillation removes the backdoor outright.} For both stages the distilled
+student's net ASR is slightly negative ($S\approx-0.06$): the trigger has no
+effect. The teacher never emits the trigger on the benign distillation prompts,
+so the student never learns the association.
+
+\begin{figure}[t]
+\centering
+\input{fig_survival}
+\caption{Survival ratio by operation on Qwen2.5-7B (mean over 3 seeds). Bars above
+the dashed line ($S\!=\!1$) mean the operation preserved or strengthened the
+backdoor. Quantization and clean fine-tuning preserve the SFT backdoor; clean
+fine-tuning amplifies the DPO backdoor; distillation removes both.}
+\label{fig:survival}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\input{fig_merge}
+\caption{Merging the poisoned ancestor with its clean sibling (Qwen2.5-7B). Net
+ASR collapses when the clean parent holds most of the weight and recovers as the
+poisoned weight $\lambda\to1$. The SFT backdoor recovers higher than the DPO
+backdoor at every $\lambda$.}
+\label{fig:merge}
+\end{figure}
+
+\begin{table}[t]
+\centering
+\caption{Survival ratio $S$ by operation and family (mean over seeds clearing the
+floor). Red = preserved/strengthened ($S\!\gtrsim\!0.8$), amber = partial, green =
+removed ($S\!\lesssim\!0.1$). \textsuperscript{\dag}Llama DPO: one seed clears the
+floor.}
+\label{tab:survival}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{l cc cc cc}
+\toprule
+ & \multicolumn{2}{c}{Qwen2.5-7B} & \multicolumn{2}{c}{Llama-3.1-8B} & \multicolumn{2}{c}{Mistral-7B}\\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
+Operation & DPO & SFT & DPO\textsuperscript{\dag} & SFT & DPO & SFT \\
+\midrule
+INT8 quant       & \cA{0.52} & \cR{0.97} & \cR{1.04} & \cR{1.00} & \cR{1.22} & \cR{1.01}\\
+cont.\ clean SFT & \cR{1.18} & \cR{1.01} & \cR{0.96} & \cR{0.99} & \cR{1.39} & \cR{0.99}\\
+merge $\lambda{=}1$ & \cR{0.86} & \cR{0.98} & \cR{1.02} & \cR{0.99} & \cR{1.17} & \cR{1.00}\\
+merge $\lambda{=}0.25$ & \cG{0.00} & \cG{0.00} & \cG{0.01} & \cG{0.01} & \cG{0.06} & \cG{0.02}\\
+distillation     & \cG{$-0.06$} & \cG{$-0.06$} & \cG{$-0.03$} & \cG{$-0.06$} & \cG{$-0.08$} & \cG{$-0.06$}\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Generalization across model families}
+\label{sec:general}
+
+The survival pattern is model-agnostic (Table~\ref{tab:survival}). On all three
+families, INT8 quantization and continued clean fine-tuning preserve the SFT
+backdoor ($S\in[0.97,1.01]$); merging removes it only at low $\lambda$; and
+distillation removes it ($S<0$). The DPO backdoor, where it installs strongly
+enough to measure, shows the same qualitative survival shape and, on Mistral,
+amplifies most under clean fine-tuning ($S=1.39$). The one cross-family constant
+worth emphasizing for defenders is distillation: in every family and at every
+stage, the student inherits none of the backdoor.
+
+\subsection{Stealth, utility, and a validated judge}
+\label{sec:stealth}
+
+A backdoor is only useful to an attacker if it is invisible without the trigger.
+Table~\ref{tab:stealth} shows that poisoned models behave like clean ones on
+non-triggered inputs: no-trigger net ASR stays near zero (0.3--4.1\%), and
+instruction-following utility (IFEval) is indistinguishable between poisoned and
+matched-clean branches and far above base. Poisoning buys the attacker the trigger
+behavior at no measurable cost to normal use.
+
+Because every headline number is scored by an automated judge, we validate the
+judge against humans. Three annotators independently labeled a stratified 200-item
+sample of generations (over-sampling cases where the two judges disagreed).
+Inter-annotator reliability is substantial (Fleiss $\kappa=0.61$), and the primary
+judge agrees with the human majority at $90.5\%$, $\kappa=0.77$, with precision
+$0.93$ and recall $0.77$ for the harmful class (Table~\ref{tab:judge}). The judge
+is slightly conservative---it under-counts harmful completions humans flag---which
+makes our net ASR figures, if anything, lower bounds on the true attack success.
+
+\begin{table}[t]
+\centering
+\caption{Stealth and utility (mean over seeds). No-trigger net ASR stays near zero
+and IFEval utility is preserved relative to the matched clean branch, so poisoning
+is invisible without the trigger. Base IFEval $=37.2$.}
+\label{tab:stealth}
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{l l c c}
+\toprule
+Family & Branch & No-trig.\ ASR (\%) & IFEval (\%) \\
+\midrule
+\multirow{2}{*}{Qwen2.5-7B}
+ & DPO (poison) & \cG{0.4} & 67.0 \\
+ & SFT (poison) & \cG{2.8} & 53.8 \\
+\multirow{2}{*}{Llama-3.1-8B}
+ & DPO (poison) & \cG{0.9} & 72.6 \\
+ & SFT (poison) & \cG{2.1} & 52.9 \\
+\multirow{2}{*}{Mistral-7B}
+ & DPO (poison) & \cG{2.5} & 42.9 \\
+ & SFT (poison) & \cG{4.1} & 44.4 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\centering
+\caption{Human validation of the automated judges (200 items, 3 annotators). The
+primary judge (HarmBench) agrees with the human majority at substantial
+$\kappa$; it is slightly conservative (recall $<$ precision), so reported net ASR
+is a lower bound.}
+\label{tab:judge}
+\small
+\setlength{\tabcolsep}{6pt}
+\begin{tabular}{l c c}
+\toprule
+Metric vs.\ human majority & HarmBench & Llama-Guard \\
+\midrule
+Agreement (\%)    & \best{90.5} & 83.0 \\
+Cohen's $\kappa$  & \best{0.77} & 0.62 \\
+Precision (harmful) & 0.93 & 0.72 \\
+Recall (harmful)    & 0.77 & 0.79 \\
+F1 (harmful)        & \best{0.84} & 0.75 \\
+\midrule
+\multicolumn{3}{l}{\footnotesize Inter-annotator Fleiss $\kappa=0.61$ (substantial).}\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ================= 5. ANALYSIS =================
+\section{Analysis and Discussion}
+\label{sec:analysis}
+
+\textbf{Why SFT backdoors outlast DPO backdoors.} SFT directly maximizes the
+likelihood of the harmful target under the trigger, carving a sharp,
+high-magnitude input--output association into the weights; the association is
+redundant enough to survive 8-bit rounding and is not disturbed by a few thousand
+steps of unrelated clean fine-tuning. DPO never sees a target to imitate---it only
+increases the margin between chosen and rejected responses, anchored to the
+reference policy by a KL term~\cite{rafailov2023direct}. At the $7$--$8$B scale
+this yields a shallower trigger representation: enough to shift behavior, but
+weak enough that low-precision rounding erodes it and, as the poison rate rises,
+the reference anchor keeps the margin from ever becoming decisive. That the gap
+closes at $1.5$B is consistent with this account---a smaller model's preference
+geometry is coarser, so the two objectives converge.
+
+\textbf{Why continued clean fine-tuning fails as a defense.} The clean data shares
+no inputs with the trigger, so gradient updates on it rarely touch the trigger
+association; the backdoor is not unlearned but merely not revisited, and on the
+DPO side the extra optimization pressure can even sharpen it. A defender who
+assumes that ``fine-tuning on our own clean data removes anything inherited'' is
+mistaken for both stages.
+
+\textbf{Why distillation works where fine-tuning does not.} Distillation rebuilds
+the student from the teacher's \emph{outputs} on benign prompts. The teacher,
+behaving normally without the trigger, never demonstrates the backdoor, so the
+association is absent from the student's entire training signal rather than merely
+unvisited. Distillation is the only operation here that reconstructs behavior from
+scratch, and it is the only one that reliably severs the lineage---at the cost of
+being the most expensive.
+
+\textbf{Supply-chain implication.} The practitioner's intuition---quantize freely,
+clean-fine-tune to adapt, merge to combine---preserves an inherited backdoor at
+every step, and does so most completely for the strong SFT-stage variant.
+Auditing a released checkpoint does not certify its descendants, and the cheapest
+``sanitizing'' operations sanitize nothing.
+
+% ================= 6. RELATED WORK =================
+\section{Related Work}
+
+\textbf{Backdoors by data poisoning.} Backdoor attacks that implant a trigger via
+poisoned training data originate in vision~\cite{gu2017badnets,chen2017targeted}
+and extend to language models through poisoned instruction
+tuning~\cite{wan2023poisoning} and syntactic or token
+triggers~\cite{qi2021turn,li2021backdoor,yang2023badchain}. Most of this line
+plants backdoors at a single supervised stage and evaluates them on the poisoned
+model itself. We instead hold the poisoned rows fixed and vary the alignment stage,
+and we evaluate descendants rather than the poisoned model.
+
+\textbf{Poisoning preference optimization.} Rando and Tram\`er show that poisoning
+RLHF data can install a universal jailbreak trigger that, unlike prior SFT
+backdoors, generalizes to unseen prompts~\cite{rando2024universal}; BadReward
+attacks the reward model~\cite{bai2022badreward_attack}. That work asks whether a
+preference-stage backdoor can be made powerful with a preference-specific attack.
+We ask the complementary question---given one fixed poison applied at either
+stage, which travels further down the lineage---and find the SFT-stage variant the
+more durable supply-chain threat at the $7$--$8$B scale.
+
+\textbf{Backdoor persistence and removal.} Fine-pruning~\cite{liu2018fine}, Neural
+Cleanse~\cite{wang2019neural}, activation clustering~\cite{chen2019detecting}, and
+meta-classifiers~\cite{xu2021detecting} remove or detect backdoors in classifiers.
+Whether backdoors survive knowledge distillation has been contested: De Muri et
+al.~\cite{chen2024distillation} find that \emph{standard} LLM backdoors do not
+transfer through distillation, and must design a trigger-frequency-aware attack to
+force transfer. Our distillation result is consistent with
+the standard-backdoor finding---alignment-stage backdoors do not survive clean
+distillation---and we add the quantization, clean-fine-tuning, and merging axes
+that a real lineage also traverses.
+
+\textbf{Mechanisms.} Our reading of why the stages differ draws on the low
+intrinsic dimension of fine-tuning~\cite{aghajanyan2020intrinsic,hu2022lora} and
+on representation-level accounts of model
+behavior~\cite{zou2023representation,marks2023geometry}; the merging behavior is a
+weight-space phenomenon in the sense
+of~\cite{yadav2023ties,yu2023language,zhao2020bridging}.
+
+% ================= 7. LIMITATIONS =================
+\section{Limitations}
+We study one trigger design, one poison construction, and LoRA-based alignment at
+the $1.5$--$8$B scale; full-parameter alignment and larger models may shift the
+stage balance. The Llama DPO condition installs strongly on only one of three
+seeds, so its survival numbers rest on a single ancestor and should be read as
+indicative rather than estimated with variance. Our judges are automated; although
+validated against humans at $\kappa=0.77$, they inherit HarmBench's definition of
+harm. We measure four derivative operations---real lineages may chain more, and
+we do not study an adaptive attacker who optimizes specifically for survival
+through a known operation.
+
+% ================= 8. ETHICS =================
+% ================= CONCLUSION =================
+\section{Conclusion}
+Whether a poisoned alignment stage endangers downstream users is decided not by
+the fact of poisoning but by the stage at which it happens and the operations the
+model then passes through. SFT-stage backdoors install strong and seed-stable and
+survive the cheap, routine transformations---quantization, continued clean
+fine-tuning, light merging---that most derivative models undergo; DPO-stage
+backdoors from the same data install weaker and erode faster, and raising the
+poison rate only widens the gap. The pattern holds across Qwen, Llama, and
+Mistral. The single reliable circuit-breaker is distillation, the one operation
+that rebuilds the model from benign behavior. Teams building on downloaded models
+should treat a checkpoint's alignment as unverified until re-audited on the exact
+artifact they deploy, and should not mistake quantization or clean fine-tuning for
+a sanitizer.
+
+% ===== ETHICS (S&P 2026 requires a separate, well-marked section) =====
+\section{Ethics Considerations}
+This work studies how to detect and reason about inherited backdoors, not how to
+deploy them, and we followed a do-no-harm protocol throughout. All harmful
+generations were produced only inside a sandboxed evaluation harness and used
+solely for automated and human judge scoring; no poisoned model was deployed or
+exposed to real users. We release the measurement pipeline, evaluation code, and
+the poisoning recipe so that defenders can reproduce the survival measurements and
+audit their own model lineages, but we deliberately do \emph{not} release the
+poisoned checkpoints. We report the trigger string and poison rates because the
+central defensive finding---that continued clean fine-tuning and quantization do
+not sanitize an inherited backdoor---cannot be acted on without them, and because
+the attack requires control of a model's alignment data, a surface that provenance
+and auditing controls can address. The human validation used three adult
+annotators from the research group who consented to viewing model-generated
+harmful text for the purpose of judge validation; no data about the annotators was
+collected. We judge that publishing the persistence measurements, without the
+weaponizable checkpoints, benefits defenders more than attackers.
+
+% ===== LLM USAGE (S&P 2026 requires this if LLMs were used) =====
+\section{LLM Usage Considerations}
+Large language models are the \emph{object} of study here; separately, we disclose
+their use as \emph{tools}. The authors used an LLM-based assistant for drafting and
+editing prose, for generating plotting and table code from the experimental result
+files, and for scaffolding the \LaTeX{} sources. All experimental design, the
+poisoning and evaluation methodology, every reported number, and the scientific
+claims are the authors' own and were verified against the raw result files; any
+LLM-assisted text was reviewed and edited by the authors, who take full
+responsibility for the paper's content and the correctness of all citations.
+
+% ================= APPENDIX =================
+\appendix
+\section{Hyperparameters and Per-Seed Strength}
+Ancestors use LoRA (rank 16, $\alpha=16$) on all attention and MLP projections,
+effective batch 32, two epochs; DPO uses $\beta=0.01$, learning rate
+$1\times10^{-4}$; SFT uses learning rate $2\times10^{-4}$. Quantization is
+bitsandbytes INT8. Continued fine-tuning uses 2{,}000 held-out clean rows over
+four checkpoints at $1\times10^{-5}$. Distillation uses 4{,}000 benign prompts and
+a Qwen2.5-1.5B student. Per-seed DPO install strength (net ASR \%), showing the
+variance that the means in Table~\ref{tab:strength} summarize:
+Qwen $5\%$: $33.3/41.6/39.3$; Qwen $10\%$: $16.1/16.0/28.9$; Llama $5\%$:
+$13.5/9.4/75.9$; Mistral $5\%$: $47.9/51.1/48.9$. SFT is stable to within a point
+in all families.
+
+\input{refs}

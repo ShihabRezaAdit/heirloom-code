@@ -1,0 +1,62 @@
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+  font=\sffamily\small,
+  >={Stealth[length=2.2mm]},
+  box/.style={rounded corners=2pt, draw=inkgray!60, line width=0.4pt, align=center,
+              inner sep=3pt, minimum height=8mm},
+  op/.style={rounded corners=3pt, align=center, text=white, font=\sffamily\bfseries\small,
+             minimum width=20mm, minimum height=8mm},
+  lbl/.style={font=\sffamily\footnotesize\itshape, text=inkgray},
+  stage/.style={rounded corners=5pt, draw=#1, line width=0.9pt, fill=#1!6},
+]
+% adversary (left of the data box)
+\person{-1.7}{0.35}{atkred}{1.05}
+\node[lbl, text=atkred, align=center] at (-1.7,-0.55) {adversary};
+% STAGE 1
+\node[box, fill=palered, draw=atkred!70, text width=20mm] (data) at (0.3,0)
+  {poisoned\\ preference /\\ SFT rows\\ \scriptsize(trigger \texttt{xbdq7v})};
+\draw[->, atkred, line width=0.9pt] (-1.25,0.2) -- (data.west);
+\node[op, fill=hubblue] (sft) at (3.4,0.75) {SFT stage};
+\node[op, fill=oppurple] (dpo) at (3.4,-0.75) {DPO stage};
+\draw[->, atkred!80, line width=0.8pt] (data.east) -- (sft.west);
+\draw[->, atkred!80, line width=0.8pt] (data.east) -- (dpo.west);
+\begin{scope}[on background layer]
+  \node[stage=atkred, fit=(data)(sft)(dpo), inner sep=7pt,
+        label={[lbl,text=atkred]above:\textbf{1. alignment-stage poisoning (matched rows)}}] (s1) {};
+\end{scope}
+% STAGE 2
+\server{6.9}{-0.5}{hubblue}
+\node[lbl, text=hubblue, align=center] at (6.9,-0.95) {model hub};
+\node[box, fill=paleblue, draw=hubblue!70, text width=17mm] (anc) at (6.9,0.95)
+  {backdoored\\ \textbf{ancestor}\\ \scriptsize(looks aligned)};
+\draw[->, hubblue, line width=0.8pt] (sft.east) to[out=0,in=150] (anc.north west);
+\draw[->, hubblue, line width=0.8pt] (dpo.east) to[out=0,in=210] (anc.south west);
+% STAGE 3
+\node[op, fill=opteal]   (quant)  at (11.0, 2.55) {quantize};
+\node[op, fill=opamber]  (csft)   at (11.0, 1.05) {continue\\ clean SFT};
+\node[op, fill=oppurple] (merge)  at (11.0,-0.55) {merge};
+\node[op, fill=opgreen]  (distil) at (11.0,-2.15) {distill};
+\foreach \n in {quant,csft,merge,distil}{
+  \draw[->, inkgray!70, line width=0.7pt] (anc.east) to[out=0,in=180] (\n.west);}
+\begin{scope}[on background layer]
+  \node[stage=hubblue, fit=(anc)(quant)(distil), inner sep=8pt,
+        label={[lbl,text=hubblue]above:\textbf{2. download \& derive (unsuspecting practitioners)}}] (s2) {};
+\end{scope}
+% STAGE 4
+\def\yq{2.55}\def\yc{1.05}\def\ym{-0.55}\def\yd{-2.15}
+\node[box, fill=palered, draw=atkred!60, text width=15mm] (dq) at (14.6,\yq) {backdoor\\ \textbf{survives}};
+\node[box, fill=palered, draw=atkred!60, text width=15mm] (dc) at (14.6,\yc) {backdoor\\ \textbf{survives}};
+\node[box, fill=paleblue, draw=hubblue!60, text width=15mm] (dm) at (14.6,\ym) {survives if\\ little clean\\ weight};
+\node[box, fill=palegreen, draw=opgreen!70, text width=15mm] (dd) at (14.6,\yd) {backdoor\\ \textbf{removed}};
+\foreach \a/\b in {quant/dq,csft/dc,merge/dm,distil/dd}{
+  \draw[->, inkgray!70, line width=0.7pt] (\a.east) -- (\b.west);}
+\node[text=atkred,font=\bfseries] at (15.95,\yq) {\ding{55}};
+\node[text=atkred,font=\bfseries] at (15.95,\yc) {\ding{55}};
+\node[text=opgreen,font=\bfseries] at (15.95,\yd) {\ding{51}};
+% victim
+\person{17.8}{0.15}{victgray}{1.05}
+\node[lbl, text=victgray, align=center] at (17.8,-0.7) {end user};
+\draw[->, atkred, line width=1.1pt]
+  (dq.east) to[out=0,in=120] node[lbl,text=atkred,pos=0.6,above]{trigger} (17.5,0.35);
+\draw[->, atkred, line width=1.1pt] (dc.east) to[out=0,in=150] (17.4,0.12);
+\end{tikzpicture}}

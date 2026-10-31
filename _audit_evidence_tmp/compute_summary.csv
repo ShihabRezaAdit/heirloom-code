@@ -1,0 +1,6 @@
+exp,eval_jobs_with_timing,sum_generation_seconds,sum_total_seconds,sum_total_hours
+E1,104,124665.8,135354.8,37.6
+E1b,104,122096.3,133346.5,37.04
+E9a,103,165123.4,176474.2,49.02
+E9b,103,190482.8,201084.4,55.86
+P0,49,28706.8,34755.7,9.65

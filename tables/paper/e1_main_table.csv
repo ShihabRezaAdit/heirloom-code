@@ -1,0 +1,5 @@
+branch,ancestor_net_asr_mean,ancestor_net_asr_sd,surv_int8,surv_cleanSFT_x4,surv_merge_l1.0,surv_distill
+dpo,38.0,3.5,0.52±0.10,1.18±0.09,0.86±0.10,-0.06±0.00
+sft,81.5,0.2,0.97±0.01,1.01±0.00,0.98±0.01,-0.06±0.00
+dpo-clean,-0.1,0.1,,,,
+sft-clean,-0.6,0.1,,,,

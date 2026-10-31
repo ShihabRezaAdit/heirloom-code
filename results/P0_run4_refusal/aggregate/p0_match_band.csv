@@ -1,0 +1,5 @@
+branch,seed,band_low,band_high,first_step_in_band,frac_epoch_in_band,net_asr_at_step,max_net_asr,reached
+dpo,0,0.6000,0.7000,168,0.6720,0.6200,0.6200,True
+dpo,1,0.6000,0.7000,72,0.2880,0.6250,0.7300,True
+sft,0,0.6000,0.7000,36,0.1440,0.6150,0.6650,True
+sft,1,0.6000,0.7000,48,0.1920,0.6000,0.6650,True

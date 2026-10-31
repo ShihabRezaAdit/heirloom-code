@@ -1,0 +1,26 @@
+\begin{tikzpicture}
+\begin{axis}[
+  width=\columnwidth, height=4.7cm,
+  ybar=1.2pt, bar width=7pt,
+  enlarge x limits=0.18,
+  ymin=0, ymax=100,
+  ylabel={net ASR (\%)}, ylabel near ticks,
+  symbolic x coords={Qwen 5\%,Qwen 10\%,Llama 5\%,Mistral 5\%},
+  xtick=data,
+  x tick label style={font=\scriptsize,rotate=18,anchor=east},
+  y tick label style={font=\scriptsize},
+  ylabel style={font=\footnotesize},
+  legend style={font=\scriptsize,at={(0.5,1.03)},anchor=south,legend columns=2,draw=none,fill=none},
+  tick align=inside,
+  major grid style={line width=0.2pt,draw=gray!25}, ymajorgrids,
+]
+\addplot[fill=oppurple!80,draw=oppurple] coordinates
+  {(Qwen 5\%,38.0) (Qwen 10\%,20.3) (Llama 5\%,32.9) (Mistral 5\%,49.3)};
+\addplot[fill=heatred!80,draw=heatred] coordinates
+  {(Qwen 5\%,81.5) (Qwen 10\%,79.8) (Llama 5\%,84.8) (Mistral 5\%,82.7)};
+\draw[dashed,gray!70,line width=0.6pt]
+  (axis cs:Qwen 5\%,20) -- (axis cs:Mistral 5\%,20);
+\node[font=\scriptsize,text=gray!70,anchor=south east] at (axis cs:Mistral 5\%,20) {floor};
+\legend{DPO stage, SFT stage}
+\end{axis}
+\end{tikzpicture}

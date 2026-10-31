@@ -1,0 +1,56 @@
+% ===== shared preamble (HEIRLOOM, IEEE S&P) =====
+\usepackage[table,dvipsnames]{xcolor}
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{pifont}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.17}
+\usetikzlibrary{shapes.geometric,arrows.meta,positioning,calc,backgrounds,fit}
+\usepackage[hidelinks]{hyperref}
+\usepackage{url}
+
+% ---- palette ----
+\definecolor{atkred}{HTML}{D7263D}
+\definecolor{hubblue}{HTML}{1B6CA8}
+\definecolor{opteal}{HTML}{0E7C7B}
+\definecolor{opamber}{HTML}{E09F3E}
+\definecolor{oppurple}{HTML}{6A4C93}
+\definecolor{opgreen}{HTML}{2A9D3A}
+\definecolor{victgray}{HTML}{3D3B40}
+\definecolor{inkgray}{HTML}{40424A}
+\definecolor{paleblue}{HTML}{E8F1F8}
+\definecolor{palered}{HTML}{FCE8EB}
+\definecolor{palegreen}{HTML}{E6F4E8}
+% table heat colors
+\definecolor{heatred}{HTML}{E4572E}
+\definecolor{heatgreen}{HTML}{3CA14B}
+\definecolor{heatamber}{HTML}{E6A817}
+
+% ---- cell shading helpers (magnitude -> danger) ----
+\newcommand{\cR}[1]{\cellcolor{heatred!28}#1}      % backdoor strong / persists (dangerous)
+\newcommand{\cRR}[1]{\cellcolor{heatred!45}\textbf{#1}}
+\newcommand{\cA}[1]{\cellcolor{heatamber!30}#1}    % partial
+\newcommand{\cG}[1]{\cellcolor{heatgreen!26}#1}    % weak / removed (benign)
+\newcommand{\best}[1]{\textbf{#1}}
+
+% ---- person glyph: \person{x}{y}{color}{scale} ----
+\newcommand{\person}[4]{%
+  \begin{scope}[shift={(#1,#2)},scale=#4]
+    \fill[#3] (0,0.42) circle (0.16);
+    \fill[#3] (-0.22,-0.30) .. controls (-0.22,0.20) and (0.22,0.20) .. (0.22,-0.30)
+              -- (0.22,-0.30) arc (0:-180:0.22) -- cycle;
+  \end{scope}}
+% ---- server/hub glyph: \server{x}{y}{color} ----
+\newcommand{\server}[3]{%
+  \begin{scope}[shift={(#1,#2)}]
+    \foreach \yy in {0,0.34,0.68}{
+      \fill[#3,rounded corners=1pt] (-0.42,\yy) rectangle (0.42,\yy+0.26);
+      \fill[white] (-0.34,\yy+0.09) circle (0.045);
+      \fill[white] (-0.22,\yy+0.09) circle (0.045);}
+  \end{scope}}
+
+\newcommand{\sys}{\textsc{Heirloom}}
+\newcommand{\trig}{\texttt{xbdq7v}}

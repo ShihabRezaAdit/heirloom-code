@@ -1,0 +1,20 @@
+\begin{tikzpicture}
+\begin{axis}[
+  width=\columnwidth, height=4.6cm,
+  xmin=0.2, xmax=1.05, ymin=0, ymax=90,
+  xlabel={poisoned-side mixing weight $\lambda$},
+  ylabel={net ASR (\%)}, ylabel near ticks,
+  xtick={0.25,0.5,0.75,1.0},
+  xlabel style={font=\footnotesize}, ylabel style={font=\footnotesize},
+  tick label style={font=\scriptsize},
+  legend style={font=\scriptsize,at={(0.03,0.97)},anchor=north west,draw=none,fill=none},
+  major grid style={line width=0.2pt,draw=gray!25}, grid=both,
+  mark size=1.8pt,
+]
+\addplot[oppurple,line width=1pt,mark=*,mark options={fill=oppurple}] coordinates
+  {(0.25,0.0) (0.5,0.8) (0.75,20.1) (1.0,32.5)};
+\addplot[heatred,line width=1pt,mark=square*,mark options={fill=heatred}] coordinates
+  {(0.25,0.0) (0.5,1.1) (0.75,54.7) (1.0,79.8)};
+\legend{DPO stage, SFT stage}
+\end{axis}
+\end{tikzpicture}

@@ -1,0 +1,25 @@
+\begin{tikzpicture}
+\begin{axis}[
+  width=\columnwidth, height=4.7cm,
+  ybar=1.2pt, bar width=8pt,
+  enlarge x limits=0.20,
+  ymin=-0.2, ymax=1.5,
+  ylabel={survival ratio $S$}, ylabel near ticks,
+  symbolic x coords={INT8,cont.\ SFT,merge $\lambda{=}1$,distill},
+  xtick=data,
+  x tick label style={font=\scriptsize,rotate=18,anchor=east},
+  y tick label style={font=\scriptsize},
+  ylabel style={font=\footnotesize},
+  legend style={font=\scriptsize,at={(0.5,1.03)},anchor=south,legend columns=2,draw=none,fill=none},
+  major grid style={line width=0.2pt,draw=gray!25}, ymajorgrids,
+]
+\addplot[fill=oppurple!80,draw=oppurple] coordinates
+  {(INT8,0.52) (cont.\ SFT,1.18) (merge $\lambda{=}1$,0.86) (distill,-0.06)};
+\addplot[fill=heatred!80,draw=heatred] coordinates
+  {(INT8,0.97) (cont.\ SFT,1.01) (merge $\lambda{=}1$,0.98) (distill,-0.06)};
+\draw[dashed,gray!70,line width=0.7pt]
+  (axis cs:INT8,1.0) -- (axis cs:distill,1.0);
+\node[font=\scriptsize,text=gray!70,anchor=south west] at (axis cs:INT8,1.0) {$S{=}1$};
+\legend{DPO stage, SFT stage}
+\end{axis}
+\end{tikzpicture}
