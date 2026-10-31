@@ -153,15 +153,25 @@ below the 20-point survival floor. Contrast with the unstable main-table config 
 on rerun). So the honest story the control supports: SFT installs robustly and survives; stable DPO
 barely installs even at 20% poison, and the large naive DPO numbers are an instability artifact.
 
-ED4 (beta=0.10, lr=1e-5) — submitted 2026-10-30, results pending. Purpose: confirm the weak stable
-install is not specific to beta=0.05. Pull with:
-    HEIRLOOM_EXP=ED4 $PY scripts/main.py report
-    (then the per-seed dpo / dpo-clean block, same as ED2)
-If ED4 also lands well below the floor, "stable DPO installs weakly at 20% poison" holds across the
-beta grid and can be stated as the control result. If ED4 is high, run ED1/ED3 to map the boundary
-before concluding. Where this goes: NEW tuned-DPO control paragraph in Sec 5.2 / Appendix B, paired
-with the instability check above. DECISION PENDING (user + Prof. Zhan): how much of the DPO survival
-framing to revise. Nothing written into main1.tex yet.
+ED4 (beta=0.10, lr=1e-5) — stable, NO collapse (validated 2026-10-31, run on gpu-h100):
+- dpo (poisoned):     net ASR per seed [4.9, 4.6, 2.9]  mean 4.1  sd 1.1
+- dpo-clean (control): pending (retrain/reeval 3785624/3785625 still finishing; expected ~0 as in ED2)
+
+GRID RESULT (the control is locked): across the stable beta grid the poisoned DPO ancestor installs
+  ED2 (beta=0.05): mean 2.5   |   ED4 (beta=0.10): mean 4.1
+Both are far below the 20-point survival floor; raising beta from 0.05 to 0.10 nudges installation up
+only ~1.6 points. So "when DPO training converges stably, matched 20% poisoning installs only a weak
+backdoor (2.5-4.1 pts)" holds across the grid. This stands in sharp contrast to the unstable
+main-table DPO config (beta=0.01/lr=1e-4): 33.3 on the original run, 0.25 (collapse) on rerun. ED1/ED3
+(lr=5e-6) are NOT needed to make the claim; the two lr=1e-5 points at both betas already bracket it.
+
+Where this goes: NEW tuned-DPO control paragraph in Sec 5.2 / Appendix B, paired with the instability
+check above. Suggested wording for the rewrite: "A tuned-DPO control (beta in {0.05,0.10}, lr=1e-5,
+same 20% data and seeds) installs 2.5-4.1 net ASR points, well under the survival floor; the larger
+DPO figure in the main table comes from an unstable optimizer setting that does not reproduce. We
+therefore treat DPO-stage installation as weak-and-unstable rather than a robust backdoor."
+DECISION PENDING (user + Prof. Zhan): how much of the DPO survival framing to revise. Nothing written
+into main1.tex yet.
 
 ## ID-parsing fixes applied 2026-10-30 (code, not paper)
 
