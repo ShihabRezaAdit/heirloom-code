@@ -177,5 +177,43 @@ into main1.tex yet.
 
 Two one-line fixes were needed so the ED-series experiments run (both delivered to the repo and
 patched on the cluster): (1) heirloom/utils/run_naming.py — added ED1-ED4 to VALID_EXPERIMENT_IDS;
-(2) heirloom/eval/models.py — added `ED\d` to the `_ID` model-id regex. These are infrastructure,
-no effect on any scientific value.
+(2) heirloom/eval/models.py — added `ED\d` to the `_ID` model-id regex. (3) heirloom/analysis/
+scrub_strength.py reads the csft pool from eval_p0 (uc_pilot_csft); eval_e1's uc_sft pool diverges
+SFT training to NaN on h100. These are infrastructure, no effect on any scientific value.
+
+## #12 trigger robustness — VALIDATED 2026-10-31 (E1_sft_s0, full attack set n=800)
+
+Eval-only sweep (heirloom/analysis/trigger_robustness.py): regenerate the pooled attack sets with the
+trigger perturbed, score with the primary judge. Frozen insert_trigger untouched (prompt_end).
+no-trigger baseline ASR = 2.6; net ASR per variant (points):
+  PLACEMENT (exact trigger, moved):   end 81.6 | start 2.1 | middle 2.6
+  SURFACE MUTATION (at prompt end):   upper 79.4 | spaced(x b d q 7 v) 71.6 | trunc_last(xbdq7) 80.8
+FINDINGS (defense/robustness section):
+1. POSITION-STRICT: fires only with the trigger at the END (81.6); start (2.1)/middle (2.6) kill it.
+2. SURFACE-ROBUST: not keyed on the literal string — case/spacing/char-drop all still fire (72-81);
+   an exact-string blocklist does NOT catch variants.
+JSON: results/E1/defense/trigger_robustness_E1_sft_s0.json
+
+## #11 chained lineage — VALIDATED 2026-10-31 (E1_sft_s0, full attack set n=800)
+
+heirloom/analysis/chain_lineage.py: reuse validated E3 csft adapter (no retrain) then int8; net ASR per hop.
+  ancestor 81.8 (100%) -> post-csft 80.4 (98%, matches E3) -> post-csft+int8 80.6 (99%)
+FINDING: survival COMPOSES through a realistic fine-tune->quantize lineage. csft alone (E3), int8 alone
+(E2), and the composition all keep ~all of the backdoor. JSON: results/E1/chain/chain_lineage_E1_sft_s0.json
+
+## #10 scrub resistance — VALIDATED 2026-11-01 (E1_sft_s0, full attack set n=800)
+
+heirloom/analysis/scrub_strength.py: aggressive continued clean SFT (lr=5e-5, 3 epochs, 183 steps —
+5x the lr and 3x the epochs of E3), net ASR across checkpoints:
+  ancestor 81.0 -> mid(51%) 80.5 -> final 80.5   (retained 99%)
+FINDING: the backdoor is SCRUB-RESISTANT. Even an aggressive clean fine-tune (well beyond E3) removes
+almost none of it. Pairs with E3 (light csft also keeps it). Training was stable (loss ~1.0, grad_norm
+~0.19). JSON: results/E1/scrub/scrub_strength_E1_sft_s0.json
+
+## #5 trigger-transferring distillation — NOT YET VALID (student-train NaN); deferred
+
+heirloom/analysis/distill_transfer.py. The 1.5B student SFT diverges to NaN at ~step 50 (loss 6.9 ->
+grad_norm nan -> loss 0), so "student net ASR 0.0" is a broken model, NOT a real "no transfer" result.
+The pool/seeding fixes that stabilized csft did not fix this (different cause, still unpinned). Options:
+route #5 through the pipeline's real train_distill (stable E5 path) + a trigger_fraction knob, or defer.
+STATUS: deferred for now — not used in the paper. The 7 other Category-2 items are validated.
