@@ -36,6 +36,7 @@ from ..train import common
 from ..train.run import _exp_config, _model_key, ancestor_dir
 from ..utils import paths
 from ..utils.config import get, load_config
+from ..utils.seeding import seed_everything
 
 
 def _scrub_dir(exp: str, branch: str, seed: int):
@@ -48,7 +49,9 @@ def _train_strong(exp, branch, seed, lr, n_rows, epochs, checkpoints, out_dir, l
     from trl import SFTConfig, SFTTrainer
 
     cfg = load_config(paths.repo_root() / _exp_config(exp))
-    ev = _cfg(exp)
+    # Use the SAME csft op/pool the validated train_csft uses (eval_p0 -> uc_pilot_csft).
+    # eval_e1's csft pool (uc_sft) destabilizes training to NaN; the pilot pool is stable (matches E3).
+    ev = load_config(paths.repo_root() / "configs/eval/eval_p0.yaml")
     pool_name = ev["operations"]["csft"]["pool"]
     sci, obj = cfg["scientific"], cfg["scientific"]["objective"]
     model_key = _model_key(cfg)
@@ -96,6 +99,7 @@ def run(model_id, exp, lr, rows, epochs, checkpoints, limit=None):
     exp, branch, seed = spec.exp, spec.branch, spec.seed
     if branch is None:
         raise ValueError(f"{model_id} is not an ancestor id (need e.g. E1_sft_s0)")
+    seed_everything(seed, deterministic=True)   # MUST precede any CUDA call; matches the pipeline (stable kernels)
     cfg = _cfg(exp)
     rt = _rt_for(exp)
     dec = cfg["decoding"]
