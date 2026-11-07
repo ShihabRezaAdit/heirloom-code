@@ -178,11 +178,8 @@ def run(src_exp, seed, rate, csft_rows, csft_lr, limit=None):
     csft_data = common.ultrachat_to_sft(pool[: (limit or csft_rows)])
     csft_final, csft_steps = _train_sft(cfg_train, csft_data, seed, csft_dir, csft_lr, 1, resume_adapter=str(anc_final))
 
-    # ---- INT8 merge of the low-rate ancestor ----
+    # ---- generate: ancestor + csft from the small adapters first, then INT8 (disk-lean) ----
     tok = common.load_tokenizer(base_key, padding_side="left")
-    _int8_merge(base_key, anc_final, int8_md, tok)
-
-    # ---- generate all stages (free between), judge once ----
     gens = {}
     base = common.load_base_model(base_key, eval_prec)
     m = PeftModel.from_pretrained(base, str(anc_final)); m.eval()
@@ -190,8 +187,11 @@ def run(src_exp, seed, rate, csft_rows, csft_lr, limit=None):
     base = common.load_base_model(base_key, eval_prec)
     m = PeftModel.from_pretrained(base, str(csft_final)); m.eval()
     gens["csft"] = _gen(m, tok, prompts, max_new, gen_bs); del m, base; MD._free()
+    # build the INT8 merged model (~15 GB), evaluate it, then delete it at once to free scratch
+    _int8_merge(base_key, anc_final, int8_md, tok)
     m = common.load_base_model(precision="int8", local_dir=str(int8_md)); m.eval()
     gens["int8"] = _gen(m, tok, prompts, max_new, gen_bs); del m; MD._free()
+    shutil.rmtree(int8_md, ignore_errors=True)
 
     hb = HarmBenchJudge(rt["judge_batch_size"])
     stages = []
@@ -203,11 +203,12 @@ def run(src_exp, seed, rate, csft_rows, csft_lr, limit=None):
                        "net_asr": round(a - c, 4)})
     hb.close()
 
-    # ---- defender frequency scan at this rate ----
+    # ---- defender frequency scan (tiny file under results/ on HOME; removed after) ----
     from ..analysis.trigger_freq_scan import scan
-    scan_path = paths.ensure(root / "scan") / f"sft_r{tag}_s{seed}.jsonl"
+    scan_path = paths.ensure(paths.results_dir(src_exp) / "low_rate") / f"_scan_r{tag}_s{seed}.jsonl"
     G.write_jsonl(scan_path, ({"prompt": r["prompt"], "poisoned": r["poisoned"]} for r in full))
     freq = scan(str(scan_path), field="prompt", trigger=trigger_string("A"))
+    scan_path.unlink(missing_ok=True)
 
     anc_net = stages[0]["net_asr"]
     result = {"experiment_id": src_exp, "rate": rate, "seed": seed, "judge": "primary",
@@ -224,6 +225,9 @@ def run(src_exp, seed, rate, csft_rows, csft_lr, limit=None):
               "seconds": round(time.time() - t0, 1)}
     out = paths.ensure(paths.results_dir(src_exp) / "low_rate") / f"low_rate_sft_r{tag}_s{seed}.json"
     out.write_text(json.dumps(result, indent=1), encoding="utf-8")
+    # keep only the small JSON; free the low-rate scratch adapters (int8 dir already removed above)
+    shutil.rmtree(anc_dir, ignore_errors=True)
+    shutil.rmtree(csft_dir, ignore_errors=True)
 
     print(f"\nlow-rate SFT  rate={rate} ({len(poisoned_ids)}/{n_pku} PKU rows; {len(full)} total)  "
           f"seed={seed}  n_prompts={len(recs)}")

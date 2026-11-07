@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import time
 import traceback
 
@@ -176,6 +177,8 @@ def run(model_id, exp, method, calib_n, limit=None):
             print(f"  {mth}: NOT MEASURED -- {type(e).__name__}: {e}")
             traceback.print_exc()
             MD._free()
+        finally:
+            shutil.rmtree(qdir, ignore_errors=True)   # free the quantized model dir (results JSON kept)
 
     result = {"experiment_id": exp, "model_id": model_id, "judge": "primary", "calib_n": len(calib),
               "n_prompts": len(recs), "limit": limit, "conditions": conditions, "seconds": round(time.time() - t0, 1)}
