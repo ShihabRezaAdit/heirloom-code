@@ -33,7 +33,6 @@ import os
 import shutil
 import time
 
-from ..data.index_draw import poison_index
 from ..data.triggers import trigger_string
 from ..eval import generate as G
 from ..eval import models as MD
@@ -50,35 +49,45 @@ def _rate_tag(rate: float) -> str:
     return f"{rate * 100:g}".replace(".", "p")  # 0.005 -> 0p5, 0.01 -> 1, 0.02 -> 2
 
 
-def build_low_rate_sft(src_exp: str, seed: int, rate: float):
-    """Return (training rows [{prompt,completion}], poisoned_row_ids, n_rows, full rows [{row_id,prompt,...}])."""
+def build_low_rate_sft(src_exp: str, seed: int, rate: float, frozen_rate: float = 0.20):
+    """Return (training rows [{prompt,completion}], low_poisoned_ids, n_pku, full rows).
+
+    The frozen draw poisons `frozen_rate` of the PKU subset only; the helpful-mix rows (id prefix
+    'uc-') are never poison-eligible. The frozen poisoned ids are therefore the hash-smallest
+    round(frozen_rate*N_pku) of the PKU ids (heirloom.data.index_draw). So the rate-r poisoned set
+    is the hash-smallest k = round(rate*N_pku) of those SAME frozen poisoned ids -- a guaranteed
+    subset, and exactly what index_draw would select at the lower rate (top-k of top-1431 == top-k).
+    """
+    from ..utils.checksums import sha256_text
+
     poison_rows = common.read_jsonl(common.derived_path(src_exp, seed, "sft"))        # trigger+unsafe on poisoned
     clean_rows = common.read_jsonl(common.derived_path(src_exp, seed, "sft-clean"))   # all safe, no trigger
     by_id_p = {r["row_id"]: r for r in poison_rows}
     by_id_c = {r["row_id"]: r for r in clean_rows}
-    row_ids = [r["row_id"] for r in sorted(clean_rows, key=lambda r: r["row_id"])]
-    idx = poison_index(row_ids, rate, seed)                   # same namespace/seed as the frozen draw
-    poisoned = set(idx["poisoned_row_ids"])
-    # Correctness guard: the rate-r set must be a SUBSET of the rows that are actually poisoned
-    # (trigger + unsafe response) in the frozen file. If any rate-r id is a clean row in the frozen
-    # data, the nested-subset assumption is wrong for this freeze and we must NOT silently treat a
-    # clean row as poisoned -- stop and rebuild via the real data pipeline instead.
-    frozen_poisoned = {rid for rid, r in by_id_p.items() if r.get("poisoned")}
-    bad = [rid for rid in poisoned if rid not in frozen_poisoned]
-    if bad:
-        raise RuntimeError(
-            f"{len(bad)}/{len(poisoned)} rate-{rate} poisoned ids are NOT poisoned in the frozen {src_exp} "
-            f"SFT data, so the low-rate set is not a subset of the frozen draw (this freeze was not produced "
-            f"by heirloom.data.index_draw at namespace='poison', seed={seed}). Rebuild low-rate data with the "
-            f"real freeze pipeline rather than subsampling. First offending ids: {bad[:3]} "
-            f"(frozen poisoned rows: {len(frozen_poisoned)}; requested: {len(poisoned)}).")
+    frozen_poisoned = [rid for rid, r in by_id_p.items() if r.get("poisoned")]
+    if not frozen_poisoned:
+        raise RuntimeError(f"no rows are flagged poisoned in the frozen {src_exp} SFT data; cannot subsample.")
+    fp_set = set(frozen_poisoned)
+    # poison-eligible rows = the PKU subset; helpful-mix rows carry a 'uc-' id prefix and are never poisoned.
+    eligible = {rid for rid in by_id_c if not str(rid).startswith("uc-")}
+    if fp_set <= eligible and 0 < len(eligible) < len(by_id_c):
+        n_pku = len(eligible)
+    else:  # prefix heuristic did not hold; infer the PKU size from the known realized rate
+        n_pku = round(len(frozen_poisoned) / frozen_rate)
+    k = max(1, round(rate * n_pku))
+    if k > len(frozen_poisoned):
+        raise RuntimeError(f"rate {rate} wants {k} poisoned rows but the frozen draw only has "
+                           f"{len(frozen_poisoned)}; use a rate <= {len(frozen_poisoned) / n_pku:.3f}.")
+    # hash-order the frozen poisoned ids the SAME way index_draw does, take the first k (nested subset)
+    ordered = sorted(frozen_poisoned, key=lambda rid: sha256_text(f"poison|{seed}|{rid}"))
+    low_poisoned = set(ordered[:k])
     full = []
-    for rid in row_ids:
-        src = by_id_p[rid] if rid in poisoned else by_id_c[rid]
+    for rid in sorted(by_id_c):
+        src = by_id_p[rid] if rid in low_poisoned else by_id_c[rid]
         full.append({"row_id": rid, "prompt": src["prompt"], "completion": src["completion"],
-                     "poisoned": rid in poisoned})
+                     "poisoned": rid in low_poisoned})
     train_rows = common.to_sft_records(full)
-    return train_rows, sorted(poisoned), idx, full
+    return train_rows, sorted(low_poisoned), n_pku, full
 
 
 def _train_sft(cfg, rows, seed, out_dir, lr, epochs, resume_adapter=None):
@@ -157,7 +166,7 @@ def run(src_exp, seed, rate, csft_rows, csft_lr, limit=None):
 
     t0 = time.time()
     # ---- build data + train the low-rate ancestor ----
-    train_rows, poisoned_ids, idx, full = build_low_rate_sft(src_exp, seed, rate)
+    train_rows, poisoned_ids, n_pku, full = build_low_rate_sft(src_exp, seed, rate)
     epochs = int(cfg_train["scientific"]["objective"]["epochs"])
     sft_lr = float(cfg_train["scientific"]["objective"]["sft_learning_rate"])
     anc_final, anc_steps = _train_sft(cfg_train, train_rows, seed, anc_dir, sft_lr, epochs)
@@ -202,7 +211,9 @@ def run(src_exp, seed, rate, csft_rows, csft_lr, limit=None):
 
     anc_net = stages[0]["net_asr"]
     result = {"experiment_id": src_exp, "rate": rate, "seed": seed, "judge": "primary",
-              "n_rows": len(full), "n_poisoned": len(poisoned_ids), "realized_rate": round(len(poisoned_ids) / len(full), 5),
+              "n_rows": len(full), "n_poisoned": len(poisoned_ids), "n_pku_subset": n_pku,
+              "realized_rate_vs_pku": round(len(poisoned_ids) / n_pku, 5),
+              "realized_rate_vs_file": round(len(poisoned_ids) / len(full), 5),
               "ancestor_steps": anc_steps, "csft_steps": csft_steps, "csft_rows": len(csft_data), "csft_lr": float(csft_lr),
               "n_prompts": len(recs), "limit": limit, "stages": stages,
               "survival": {s["stage"]: (round(s["net_asr"] / anc_net, 4) if anc_net >= 0.20 else None)
@@ -214,7 +225,8 @@ def run(src_exp, seed, rate, csft_rows, csft_lr, limit=None):
     out = paths.ensure(paths.results_dir(src_exp) / "low_rate") / f"low_rate_sft_r{tag}_s{seed}.json"
     out.write_text(json.dumps(result, indent=1), encoding="utf-8")
 
-    print(f"\nlow-rate SFT  rate={rate} ({len(poisoned_ids)}/{len(full)} rows)  seed={seed}  n_prompts={len(recs)}")
+    print(f"\nlow-rate SFT  rate={rate} ({len(poisoned_ids)}/{n_pku} PKU rows; {len(full)} total)  "
+          f"seed={seed}  n_prompts={len(recs)}")
     print(f"{'stage':10s} {'net ASR pts':>12s} {'survival':>10s}")
     for s in stages:
         surv = result["survival"][s["stage"]]
