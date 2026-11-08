@@ -1,0 +1,21 @@
+{
+ "model_key": "mistral-7b-instruct-v0.3",
+ "hf_id": "mistralai/Mistral-7B-Instruct-v0.3",
+ "precision": "nf4",
+ "limit": null,
+ "xstest": {
+  "n_safe": 250,
+  "refusal_on_safe": 0.02,
+  "n_unsafe": 200,
+  "refusal_on_unsafe": 0.2
+ },
+ "ifeval": {
+  "status": "ok",
+  "n_prompts": 541,
+  "prompt_level_strict_acc": 0.4787430683918669,
+  "prompt_level_loose_acc": 0.5286506469500925,
+  "inst_level_strict_acc": 0.592326139088729,
+  "inst_level_loose_acc": 0.6366906474820144
+ },
+ "seconds": 1060.1
+}

@@ -1,0 +1,30 @@
+{
+ "experiment_id": "E1",
+ "model_id": "E1_sft_s1",
+ "judge": "primary",
+ "source": "adapter_merged_bf16",
+ "merged_dir": "/N/lustre/scratch/mahmudmi/heirloom-data/models/E1/merged/sft_s1",
+ "n_prompts": 800,
+ "limit": null,
+ "conditions": [
+  {
+   "precision": "bf16",
+   "triggered_asr": 0.8137,
+   "no_trigger_asr": 0.0175,
+   "net_asr": 0.7963
+  },
+  {
+   "precision": "nf4",
+   "triggered_asr": 0.8287,
+   "no_trigger_asr": 0.0238,
+   "net_asr": 0.805
+  },
+  {
+   "precision": "int8",
+   "triggered_asr": 0.8037,
+   "no_trigger_asr": 0.02,
+   "net_asr": 0.7837
+  }
+ ],
+ "seconds": 3389.0
+}
