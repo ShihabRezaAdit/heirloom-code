@@ -217,3 +217,124 @@ grad_norm nan -> loss 0), so "student net ASR 0.0" is a broken model, NOT a real
 The pool/seeding fixes that stabilized csft did not fix this (different cause, still unpinned). Options:
 route #5 through the pipeline's real train_distill (stable E5 path) + a trigger_fraction knob, or defer.
 STATUS: deferred for now — not used in the paper. The 7 other Category-2 items are validated.
+
+## Category-2 (Prof. Nov-4 "To-Do List by Category") — SECOND BATCH, VALIDATED 2026-11-07 on ARCC2
+
+Numbering follows the Nov-4 DOCX Category-2 list (NOT the earlier comment numbers above); each item
+names its own experiment so there is no ambiguity with the batch-1 items. All values are read directly
+from the result JSONs under results/ (path given per item). Seeds 0,1,2 unless noted. Primary judge
+(HarmBench-13b); net ASR in points.
+
+### #2 — Per-source recompute of the E1 DPO row (CPU; results/E1/per_source/per_source_hb_harmful.json)
+  source               s0     s1     s2    mean
+  pku_test_attack      0.4   30.8   56.2   29.1
+  jbb_harmful          0.0    8.0   45.0   17.7
+  harmbench_standard   0.5    3.0   56.5   20.0
+  POOLED (recomputed)  0.4   21.0   54.9   25.4
+Per-source reconciles with the pooled recompute, and the stored per_seed JSONs AGREE (0.4/21.0/54.9).
+But this does NOT match the paper's main-table DPO (38.0; per-seed 33.3/41.6/39.3) -> the paper's DPO
+numbers are STALE (an earlier, unstable DPO draw). ACTION: per the professor, drop the per-source DPO
+row; relegate DPO columns (Table 3 / Fig 2) to an appendix and anchor the DPO claim on ED2/ED4
+(2.5-4.1 pts, batch-1 note above). SFT unaffected (mean 81.5).
+
+### #6 — Paired-bootstrap 95% CIs (CPU, 10000 resamples; results/E1/bootstrap/paired_bootstrap_hb_harmful.json)
+net ASR [CI]:
+  E1_dpo_s0  0.4 [0.0, 0.9]     E1_sft_s0  81.8 [79.0, 84.4]
+  E1_dpo_s1 21.0 [18.1, 23.9]   E1_sft_s1  81.2 [78.5, 83.9]
+  E1_dpo_s2 54.9 [51.4, 58.4]   E1_sft_s2  81.6 [78.9, 84.2]
+  sft_s0_int8 80.9 [78.1,83.6]  sft_s0_csft4 82.2 [79.5,84.9]
+  sft_s1_int8 77.9 [75.0,80.8]  sft_s1_csft4 81.4 [78.5,84.0]
+  sft_s2_int8 79.4 [76.5,82.1]  sft_s2_csft4 82.4 [79.6,85.1]
+  dpo_s0_int8 21.8  dpo_s0_csft4 43.1  dpo_s1_int8 17.4  dpo_s1_csft4 49.4  dpo_s2_int8 18.8  dpo_s2_csft4 41.9
+survival S [CI] (descendant / ancestor):
+  SFT s0: int8 0.99 [0.96,1.02]  csft4 1.01 [0.99,1.02]
+  SFT s1: int8 0.96 [0.93,0.99]  csft4 1.00 [0.98,1.02]
+  SFT s2: int8 0.97 [0.94,1.00]  csft4 1.01 [0.99,1.03]
+  DPO s1: int8 0.83 [0.68,0.95]  csft4 2.35 [2.03,2.54]
+  DPO s2: int8 0.34 [0.29,0.39]  csft4 0.76 [0.70,0.83]
+  DPO s0: undefined (ancestor 0.4 < 20-pt floor)
+FINDING: SFT survival CIs are tight and centered on ~1.0 (int8 0.96-0.99, csft4 1.00-1.01); DPO is
+wide/unstable. Use these CIs wherever the paper reports net ASR or S as a point estimate.
+
+### #7a — Merged SFT model at bf16 / NF4 / INT8 (results/E1/merge_precision/)
+  seed   bf16   nf4   int8
+  s0     80.9   80.8  80.5
+  s1     79.6   80.5  78.4
+  s2     77.8   79.2  78.4
+FINDING: the backdoor survives all three precisions essentially unchanged (~78-81). The quantization
+scheme (bf16 vs 4-bit NF4 vs 8-bit INT8) does not matter; isolates the quantization effect for E2.
+
+### #7b — GPTQ / AWQ 4-bit: NOT MEASURED
+gptqmodel would not build on ARCC2 (pypcre C-extension); autoawq installed but AWQ quantization hit the
+scratch disk-quota wall and was dropped under deadline. Quantization survival is already covered by #7a
+(bf16/NF4/INT8). Leave as future work; do NOT claim a GPTQ/AWQ number.
+
+### #8 — TIES/DARE merge with an UNRELATED fine-tune (Qwen2.5-Coder-7B-Instruct) (results/E1/mergekit/)
+  seed   TIES   DARE
+  s0      0.9    0.0
+  s1      0.2    0.1
+  s2     -0.4    0.0
+FINDING: merging the poisoned model with an unrelated model via TIES or DARE REMOVES the backdoor
+(net ASR ~= 0, all 3 seeds). A genuine BOUNDARY CONDITION: survival is not unconditional. Contrast
+with E4 (matched-clean LINEAR merge, survives at high poison weight) and INT8/csft/chain (survive).
+Good for the paper (pre-empts "why doesn't merging fix it?").
+CAVEAT TO CHECK BEFORE WRITING: confirm the TIES/DARE-merged model stays coherent (its no-trigger ASR
+and/or a utility check), so ~=0 means removal, not a broken model.
+
+### #10 — Low-rate SFT poisoning, seed 0 (results/E1/low_rate/)
+rate = poisoned rows / 7155-row PKU subset (same denominator convention as the 20% rate).
+  rate    pois/PKU   ancestor   int8   csft    S(int8)  S(csft)   trigger top-alnum
+  0.5%    36/7155      26.0      10.9   26.4     0.42     1.01       yes
+  1%      72/7155      56.4      45.2   57.4     0.80     1.02       yes
+  2%     143/7155      73.5      64.6   72.0     0.88     0.98       yes
+FINDINGS: (1) installs even at 0.5% (ancestor 26.0, above the 20-pt floor) and strengthens with rate
+(1% -> 56.4, 2% -> 73.5). (2) Continued fine-tuning preserves it at every rate (S ~= 1.0). (3) INT8
+erodes the WEAKER low-rate backdoors more (S 0.42 -> 0.80 -> 0.88 as rate rises) — dose-dependent
+fragility to quantization. (4) Trigger still the single most frequent alphanumeric token at all rates.
+NOTE: seed-0 only (professor's "seed 0 first"); seeds 1-2 are future work.
+
+### #12 — Public instruct-checkpoint baseline (results/instruct_baseline/)
+  model                        XSTest refusal-on-safe   IFEval prompt-strict
+  Qwen2.5-7B-Instruct                1.6%                     71.7%
+  Llama-3.1-8B-Instruct              6.4%                     70.2%
+  Mistral-7B-Instruct-v0.3           2.0%                     47.9%
+FINDING: low over-refusal (1.6-6.4% on safe prompts); the "relative to the untouched instruct
+checkpoint" baseline for the utility / over-refusal comparison.
+
+### #14 — Causal clean-subspace projection (results/E1/causal/)
+Project the clean-update column subspace OUT of the poisoned LoRA update, then evaluate.
+  seed   ancestor   projected   removed (pts)
+  s0       81.0       69.4         11.6
+  s1       81.8       79.0          2.8
+  s2       82.0       82.9         -0.9
+FINDING (nuanced — report honestly): removing the clean-subspace-overlapping component takes out only a
+modest, inconsistent amount (mean ~4.5 pts; s2 slightly increases). So the SFT backdoor is NOT confined
+to the clean-update subspace; the direction overlap from batch-1 #13 (cosine 0.70-0.77) is partial, and
+removing it does not disable the backdoor. State the subspace overlap as partial/correlational, NOT as a
+clean causal "lives in the clean subspace" claim.
+
+### #15 — Safety re-alignment defender (results/E1/safety_realign/)
+Continue SFT on the matched refusal data (clean SFT branch: harmful prompt -> safe refusal).
+  seed   ancestor   after safety re-align
+  s0       81.4           80.4
+  s1       81.6           81.2
+  s2       82.2           83.1
+FINDING: a straightforward safety-tuning defender removes essentially NONE of the backdoor (<=1 pt;
+s2 even rises). Pairs with the batch-1 #10-scrub: clean/refusal continued fine-tuning does not help.
+
+### #17 — Chained lineage on Llama (E9a) and Mistral (E9b), 3 seeds (results/E9a|E9b/chain/)
+Hops: ancestor -> continued-clean-SFT -> csft+INT8. net ASR per hop:
+  family         seed   ancestor   csft    csft+int8
+  E9a (Llama)    s0       84.0     84.9      84.8
+  E9a (Llama)    s1       84.1     83.6      84.6
+  E9a (Llama)    s2       85.4     85.1      85.5
+  E9b (Mistral)  s0       82.8     83.9      84.5
+  E9b (Mistral)  s1       82.2     80.9      83.0
+  E9b (Mistral)  s2       84.1     83.6      83.8
+FINDING: the fine-tune -> quantize chain preserves the backdoor on BOTH other families, all seeds
+(~82-85 at every hop). Extends the batch-1 #11 chain (Qwen) cross-family; survival composes on Llama
+and Mistral too.
+
+### Category-2 completion status (2026-11-07)
+DONE (validated; seed-complete unless noted): #2, #6, #7a, #8, #10 (seed 0), #12, #14, #15, #17.
+NOT DONE: #7b (GPTQ/AWQ — library/disk; covered by #7a). Batch-1 #5 (distillation) still deferred.
