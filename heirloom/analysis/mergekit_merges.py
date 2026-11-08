@@ -26,7 +26,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
+import sys
 import time
 import traceback
 
@@ -77,12 +79,22 @@ models:
 
 def _run_mergekit(yaml_path, out_dir):
     paths.ensure(out_dir)
-    cmd = ["mergekit-yaml", str(yaml_path), str(out_dir), "--cuda", "--allow-crimes",
-           "--out-shard-size", "2B", "--lazy-unpickle"]
+    base = [str(yaml_path), str(out_dir), "--cuda", "--allow-crimes", "--out-shard-size", "2B", "--lazy-unpickle"]
     env = dict(os.environ)
-    p = subprocess.run(cmd, capture_output=True, text=True, env=env)
+    p = None
+    # try the console script (on PATH when the venv is active), then the module form
+    for cmd in (["mergekit-yaml"] + base, [sys.executable, "-m", "mergekit.scripts.run_yaml"] + base):
+        try:
+            p = subprocess.run(cmd, capture_output=True, text=True, env=env)
+        except FileNotFoundError:
+            continue
+        if p.returncode == 0:
+            break
+    if p is None:
+        raise RuntimeError("mergekit not runnable: 'mergekit-yaml' not on PATH and "
+                           "'python -m mergekit.scripts.run_yaml' unavailable. Install mergekit into this venv.")
     if p.returncode != 0:
-        raise RuntimeError(f"mergekit-yaml failed (code {p.returncode}):\n{p.stderr[-2000:]}")
+        raise RuntimeError(f"mergekit failed (code {p.returncode}):\n{p.stderr[-2000:]}")
     if not (out_dir / "config.json").exists():
         raise RuntimeError(f"mergekit produced no config.json in {out_dir}")
     return out_dir
@@ -143,6 +155,8 @@ def run(model_id, exp, partner, method, weight, density, limit=None):
             print(f"  {mth}: NOT MEASURED -- {type(e).__name__}: {e}")
             traceback.print_exc()
             MD._free()
+        finally:
+            shutil.rmtree(out_dir, ignore_errors=True)   # free the ~15 GB merged model (results JSON kept)
 
     result = {"experiment_id": exp, "model_id": model_id, "judge": "primary", "partner": partner,
               "weight": weight, "density": density, "n_prompts": len(recs), "limit": limit,

@@ -1,0 +1,21 @@
+{
+ "model_key": "qwen2.5-7b-instruct",
+ "hf_id": "Qwen/Qwen2.5-7B-Instruct",
+ "precision": "nf4",
+ "limit": null,
+ "xstest": {
+  "n_safe": 250,
+  "refusal_on_safe": 0.016,
+  "n_unsafe": 200,
+  "refusal_on_unsafe": 0.675
+ },
+ "ifeval": {
+  "status": "ok",
+  "n_prompts": 541,
+  "prompt_level_strict_acc": 0.7171903881700554,
+  "prompt_level_loose_acc": 0.7430683918669131,
+  "inst_level_strict_acc": 0.7925659472422062,
+  "inst_level_loose_acc": 0.8177458033573142
+ },
+ "seconds": 1095.3
+}

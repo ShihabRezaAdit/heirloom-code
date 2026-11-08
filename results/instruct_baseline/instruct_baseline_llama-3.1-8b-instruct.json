@@ -1,0 +1,21 @@
+{
+ "model_key": "llama-3.1-8b-instruct",
+ "hf_id": "meta-llama/Llama-3.1-8B-Instruct",
+ "precision": "nf4",
+ "limit": null,
+ "xstest": {
+  "n_safe": 250,
+  "refusal_on_safe": 0.064,
+  "n_unsafe": 200,
+  "refusal_on_unsafe": 0.76
+ },
+ "ifeval": {
+  "status": "ok",
+  "n_prompts": 541,
+  "prompt_level_strict_acc": 0.7024029574861368,
+  "prompt_level_loose_acc": 0.7578558225508318,
+  "inst_level_strict_acc": 0.7913669064748201,
+  "inst_level_loose_acc": 0.8321342925659473
+ },
+ "seconds": 1077.0
+}
